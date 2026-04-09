@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Projection Trend Explorer</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <main class="layout">
+      <section class="hero">
+        <p class="eyebrow">Senior LFP Projections</p>
+        <h1>Projection Trend Explorer</h1>
+        <p class="intro">
+          View weighted yearly trends for projection outcomes, subset by any combination of demographic and education variables, and download the resulting series.
+        </p>
+      </section>
+
+      <section class="panel controls-panel">
+        <div class="controls-header">
+          <div>
+            <h2>Controls</h2>
+            <p>Each dropdown filters the selected subgroup. Leave a field on All to collapse across that dimension.</p>
+          </div>
+          <button id="download-button" class="button secondary" type="button">Download CSV</button>
+        </div>
+
+        <div class="controls-grid">
+          <label class="control">
+            <span>Outcome</span>
+            <select id="outcome-select"></select>
+          </label>
+          <label class="control">
+            <span>Race/Ethnicity</span>
+            <select id="filter-race_ethnicity"></select>
+          </label>
+          <label class="control">
+            <span>Female</span>
+            <select id="filter-female"></select>
+          </label>
+          <label class="control">
+            <span>Age Group</span>
+            <select id="filter-age_cat"></select>
+          </label>
+          <label class="control">
+            <span>Education</span>
+            <select id="filter-education"></select>
+          </label>
+        </div>
+      </section>
+
+      <section class="results-grid">
+        <article class="panel chart-panel">
+          <div class="panel-heading">
+            <div>
+              <h2>Trend</h2>
+              <p id="selection-summary">Loading data...</p>
+            </div>
+            <div class="metric">
+              <span class="metric-label">Years</span>
+              <strong id="year-count">0</strong>
+            </div>
+          </div>
+          <div id="chart" class="chart" aria-live="polite"></div>
+        </article>
+
+        <article class="panel table-panel">
+          <div class="panel-heading">
+            <div>
+              <h2>Weighted Means</h2>
+              <p>Collapsed by year using <code>totpop</code> as weights.</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Year</th>
+                  <th>Weighted Mean</th>
+                  <th>Total Weight</th>
+                  <th>Rows Contributing</th>
+                </tr>
+              </thead>
+              <tbody id="results-body"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
