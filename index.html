@@ -19,34 +19,16 @@
       <section class="panel controls-panel">
         <div class="controls-header">
           <div>
-            <h2>Controls</h2>
-            <p>Each dropdown filters the selected subgroup. Leave a field on All to collapse across that dimension.</p>
+            <h2>Comparisons</h2>
+            <p>Each comparison defines one trend line. Choose an outcome and any demographic values you want for that line, then use the plus button to add another comparison.</p>
           </div>
-          <button id="download-button" class="button secondary" type="button">Download CSV</button>
+          <div class="controls-actions">
+            <button id="add-comparison-button" class="button add-button" type="button">Add a comparison</button>
+            <button id="download-button" class="button secondary" type="button">Download CSV</button>
+          </div>
         </div>
 
-        <div class="controls-grid">
-          <label class="control">
-            <span>Outcome</span>
-            <select id="outcome-select"></select>
-          </label>
-          <label class="control">
-            <span>Race/Ethnicity</span>
-            <select id="filter-race_ethnicity"></select>
-          </label>
-          <label class="control">
-            <span>Female</span>
-            <select id="filter-female"></select>
-          </label>
-          <label class="control">
-            <span>Age Group</span>
-            <select id="filter-age_cat"></select>
-          </label>
-          <label class="control">
-            <span>Education</span>
-            <select id="filter-education"></select>
-          </label>
-        </div>
+        <div id="comparison-list" class="comparison-list"></div>
       </section>
 
       <section class="results-grid">
@@ -68,19 +50,12 @@
           <div class="panel-heading">
             <div>
               <h2>Weighted Means</h2>
-              <p>Collapsed by year using <code>totpop</code> as weights.</p>
+              <p>Collapsed by year using <code>total population</code> as weights.</p>
             </div>
           </div>
           <div class="table-wrap">
             <table>
-              <thead>
-                <tr>
-                  <th>Year</th>
-                  <th>Weighted Mean</th>
-                  <th>Total Weight</th>
-                  <th>Rows Contributing</th>
-                </tr>
-              </thead>
+              <thead id="results-head"></thead>
               <tbody id="results-body"></tbody>
             </table>
           </div>

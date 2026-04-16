@@ -86,13 +86,6 @@ h1 {
   color: var(--muted);
 }
 
-.controls-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 14px;
-  margin-top: 20px;
-}
-
 .control {
   display: flex;
   flex-direction: column;
@@ -127,6 +120,59 @@ select:focus,
 
 .button.secondary {
   background: var(--accent-soft);
+}
+
+.controls-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.add-button {
+  background: var(--accent-soft);
+}
+
+.button.ghost {
+  background: transparent;
+  border-color: rgba(29, 26, 22, 0.12);
+}
+
+.comparison-list {
+  display: grid;
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.comparison-card {
+  padding: 18px;
+  border-radius: 20px;
+  border: 1px solid rgba(29, 26, 22, 0.12);
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.comparison-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.comparison-card-header h3 {
+  margin: 0 0 6px;
+  font-size: 1rem;
+}
+
+.comparison-card-header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.comparison-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
 }
 
 .results-grid {
@@ -189,7 +235,6 @@ select:focus,
 
 .series-line {
   fill: none;
-  stroke: var(--line);
   stroke-width: 3;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -197,8 +242,29 @@ select:focus,
 
 .series-point {
   fill: #fff8ee;
-  stroke: var(--line);
   stroke-width: 2;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  margin-top: 12px;
+  font-family: Arial, sans-serif;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.legend-item {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.legend-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
 }
 
 .axis-label,
@@ -230,6 +296,7 @@ td {
   padding: 12px 10px;
   border-bottom: 1px solid rgba(29, 26, 22, 0.1);
   text-align: left;
+  vertical-align: top;
 }
 
 th {
@@ -243,6 +310,13 @@ code {
   font-family: "SFMono-Regular", Consolas, monospace;
 }
 
+.cell-meta {
+  display: inline-block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 @media (max-width: 900px) {
   .results-grid {
     grid-template-columns: 1fr;
@@ -251,6 +325,10 @@ code {
   .controls-header,
   .panel-heading {
     flex-direction: column;
+  }
+
+  .controls-actions {
+    width: 100%;
   }
 
   .metric {
