@@ -1,18 +1,22 @@
-const DATA_URL = "./data/projections_age5cat_2020_2040.csv";
+const DATA_URL = "./data/projections_age5cat_2006_2040.csv";
 const SUPPRESSION_THRESHOLD = 200;
 
 const OUTCOME_OPTIONS = [
-  { key: "poor", label: "Poor" },
-  { key: "lfp", label: "Labor force participant" },
-  { key: "full_time", label: "Full time worker" },
-  { key: "live_any_fam", label: "Lives with any family member" },
-  { key: "live_spouse", label: "Lives with spouse" },
-  { key: "live_fam_lf", label: "Lives with any family member AND in the labor force" },
-  { key: "live_sp_lf", label: "Lives with spouse AND in the labor force" },
-  { key: "poor_lf", label: "Poor AND in the labor force" },
-  { key: "own", label: "Homeowner" },
-  { key: "stress30", label: "Housing > 30% of income" },
-  { key: "stress50", label: "Housing > 50% of income" },
+  { key: "lfp", label: "Labor force participation rate" },
+  { key: "full_time", label: "Full time workers: share of total" },
+  { key: "own", label: "Homeowner: share of total" },
+  { key: "poor", label: "Poor: share of total" },
+  { key: "stress30", label: "Housing > 30% of income: share of total" },
+  { key: "stress50", label: "Housing > 50% of income: share of total" },
+  { key: "live_any_fam", label: "Lives with any family member: share of total" },
+  { key: "live_spouse", label: "Lives with spouse: share of total" },
+  { key: "full_time_lf", label: "Full time workers: share of labor force" },
+  { key: "own_lf", label: "Homeowner: share of labor force" },
+  { key: "poor_lf", label: "Poor: share of labor force" },
+  { key: "stress30_lf", label: "Housing > 30% of income: share of labor force" },
+  { key: "stress50_lf", label: "Housing > 50% of income: share of labor force" },
+  { key: "live_fam_lf", label: "Lives with any family member: share of labor force" },
+  { key: "live_sp_lf", label: "Lives with spouse: share of labor force" },
 ];
 
 const OUTCOME_LABELS = Object.fromEntries(OUTCOME_OPTIONS.map((option) => [option.key, option.label]));
@@ -37,6 +41,7 @@ const FILTER_CONFIG = [
 const REQUIRED_DATA_COLUMNS = [
   "year",
   "totpop",
+  "pred",
   "latino",
   "white",
   "black",
@@ -92,9 +97,10 @@ async function init() {
 }
 
 function createComparison() {
+  const lastComparison = state.comparisons[state.comparisons.length - 1];
   const comparison = {
     id: state.nextComparisonId,
-    outcome: "stress50",
+    outcome: lastComparison ? lastComparison.outcome : "stress50",
     race_ethnicity: "",
     gender: "",
     age_cat: "",
@@ -232,35 +238,64 @@ function updateView() {
 function buildSeries(comparisons) {
   return comparisons.map((comparison, index) => {
     const filteredRows = state.rows.filter((row) => comparisonMatchesRow(comparison, row));
-    const grouped = new Map();
-
-    filteredRows.forEach((row) => {
-      const current = grouped.get(row.year) || { totalPopulation: 0, weightedSum: 0 };
-      current.totalPopulation += row.totpop;
-      current.weightedSum += row[comparison.outcome] * row.totpop;
-      grouped.set(row.year, current);
-    });
-
-    const points = [...grouped.entries()]
-      .sort((left, right) => left[0] - right[0])
-      .map(([year, values]) => ({
-        year,
-        totalPopulation: values.totalPopulation,
-        suppressed: values.totalPopulation < SUPPRESSION_THRESHOLD,
-        value:
-          values.totalPopulation >= SUPPRESSION_THRESHOLD
-            ? values.weightedSum / values.totalPopulation
-            : null,
-      }));
-
-    return {
-      ...comparison,
-      color: SERIES_COLORS[index % SERIES_COLORS.length],
-      label: buildComparisonLabel(comparison),
-      matchedRows: filteredRows.length,
-      points,
-    };
+    return buildComparisonSeries(comparison, filteredRows, index);
   });
+}
+
+function buildComparisonSeries(comparison, filteredRows, index) {
+  const grouped = new Map();
+
+  filteredRows.forEach((row) => {
+    if (!Number.isFinite(row[comparison.outcome])) {
+      return;
+    }
+
+    const current =
+      grouped.get(row.year) ||
+      {
+        FALSE: { totalPopulation: 0, weightedSum: 0 },
+        TRUE: { totalPopulation: 0, weightedSum: 0 },
+      };
+
+    current[row.pred].totalPopulation += row.totpop;
+    current[row.pred].weightedSum += row[comparison.outcome] * row.totpop;
+    grouped.set(row.year, current);
+  });
+
+  const years = [...grouped.keys()].sort((left, right) => left - right);
+  const label = buildComparisonLabel(comparison);
+  const color = SERIES_COLORS[index % SERIES_COLORS.length];
+
+  return {
+    ...comparison,
+    color,
+    label,
+    matchedRows: filteredRows.length,
+    actual: {
+      key: "FALSE",
+      label: `${label} | Actual`,
+      lineStyle: "solid",
+      points: years.map((year) => buildPredPoint(year, grouped.get(year).FALSE)),
+    },
+    projected: {
+      key: "TRUE",
+      label: `${label} | Projected`,
+      lineStyle: "dashed",
+      points: years.map((year) => buildPredPoint(year, grouped.get(year).TRUE)),
+    },
+  };
+}
+
+function buildPredPoint(year, values) {
+  return {
+    year,
+    totalPopulation: values.totalPopulation,
+    suppressed: values.totalPopulation > 0 && values.totalPopulation < SUPPRESSION_THRESHOLD,
+    value:
+      values.totalPopulation >= SUPPRESSION_THRESHOLD
+        ? values.weightedSum / values.totalPopulation
+        : null,
+  };
 }
 
 function comparisonMatchesRow(comparison, row) {
@@ -274,8 +309,12 @@ function comparisonMatchesRow(comparison, row) {
 
 function renderSummary() {
   const comparisonText = state.series.map((series) => series.label).join(" | ");
-  const years = new Set(state.series.flatMap((series) => series.points.map((point) => point.year)));
-  selectionSummary.textContent = `${comparisonText}. Each line is collapsed by year using total population as weights. Cells with total population below ${SUPPRESSION_THRESHOLD} are suppressed.`;
+  const years = new Set(
+    state.series.flatMap((series) =>
+      [...series.actual.points, ...series.projected.points].map((point) => point.year),
+    ),
+  );
+  selectionSummary.textContent = `${comparisonText}. Each comparison is split into actual data (${String.raw`pred=FALSE`}, solid) and projections (${String.raw`pred=TRUE`}, dashed). All values are collapsed by year using total population as weights. Cells with total population below ${SUPPRESSION_THRESHOLD} are suppressed.`;
   yearCount.textContent = String(years.size);
 }
 
@@ -284,12 +323,19 @@ function renderTable() {
   resultsHead.innerHTML = `
     <tr>
       <th>Year</th>
-      ${state.series.map((series) => `<th>${escapeHtml(series.label)}</th>`).join("")}
+      ${state.series
+        .map(
+          (series) => `
+            <th>${escapeHtml(series.label)}<br><span class="cell-meta">Actual</span></th>
+            <th>${escapeHtml(series.label)}<br><span class="cell-meta">Projected</span></th>
+          `,
+        )
+        .join("")}
     </tr>
   `;
 
   if (years.length === 0) {
-    resultsBody.innerHTML = `<tr><td colspan="${state.series.length + 1}">No rows match the current comparison selections.</td></tr>`;
+    resultsBody.innerHTML = `<tr><td colspan="${state.series.length * 2 + 1}">No rows match the current comparison selections.</td></tr>`;
     return;
   }
 
@@ -297,14 +343,9 @@ function renderTable() {
     .map((year) => {
       const cells = state.series
         .map((series) => {
-          const point = series.points.find((entry) => entry.year === year);
-          if (!point) {
-            return "<td>No data</td>";
-          }
-          if (point.suppressed) {
-            return "<td>Suppressed</td>";
-          }
-          return `<td>${formatRate(point.value)}<br><span class="cell-meta">Total population: ${formatPopulation(point.totalPopulation)}</span></td>`;
+          const actualPoint = series.actual.points.find((entry) => entry.year === year);
+          const projectedPoint = series.projected.points.find((entry) => entry.year === year);
+          return `${renderTableCell(actualPoint)}${renderTableCell(projectedPoint)}`;
         })
         .join("");
 
@@ -313,9 +354,21 @@ function renderTable() {
     .join("");
 }
 
+function renderTableCell(point) {
+  if (!point || point.totalPopulation === 0) {
+    return "<td>No data</td>";
+  }
+  if (point.suppressed) {
+    return `<td>Suppressed<br><span class="cell-meta">Total population: ${formatPopulation(point.totalPopulation)}</span></td>`;
+  }
+  return `<td>${formatRate(point.value)}<br><span class="cell-meta">Total population: ${formatPopulation(point.totalPopulation)}</span></td>`;
+}
+
 function renderChart() {
   const visibleValues = state.series.flatMap((series) =>
-    series.points.flatMap((point) => (point.suppressed || point.value === null ? [] : [point.value])),
+    [series.actual, series.projected].flatMap((predSeries) =>
+      predSeries.points.flatMap((point) => (point.suppressed || point.value === null ? [] : [point.value])),
+    ),
   );
 
   if (visibleValues.length === 0) {
@@ -375,8 +428,18 @@ function renderChart() {
         .join("")}
       <line class="axis" x1="${margin.left}" x2="${margin.left}" y1="${margin.top}" y2="${height - margin.bottom}"></line>
       <line class="axis" x1="${margin.left}" x2="${width - margin.right}" y1="${height - margin.bottom}" y2="${height - margin.bottom}"></line>
-      ${state.series.map((series) => renderSeriesPath(series, xPosition, yPosition)).join("")}
-      ${state.series.map((series) => renderSeriesPoints(series, xPosition, yPosition)).join("")}
+      ${state.series
+        .map((series) => renderSeriesPath(series.actual, series.color, xPosition, yPosition))
+        .join("")}
+      ${state.series
+        .map((series) => renderSeriesPath(series.projected, series.color, xPosition, yPosition))
+        .join("")}
+      ${state.series
+        .map((series) => renderSeriesPoints(series.actual, series.color, xPosition, yPosition))
+        .join("")}
+      ${state.series
+        .map((series) => renderSeriesPoints(series.projected, series.color, xPosition, yPosition))
+        .join("")}
       ${yearTicks
         .map(
           (year) => `
@@ -394,6 +457,8 @@ function renderChart() {
             <span class="legend-item">
               <span class="legend-swatch" style="background:${series.color}"></span>
               <span>${escapeHtml(series.label)}</span>
+              <span class="legend-style solid-style">Actual</span>
+              <span class="legend-style dashed-style">Projected</span>
             </span>
           `,
         )
@@ -402,11 +467,11 @@ function renderChart() {
   `;
 }
 
-function renderSeriesPath(series, xPosition, yPosition) {
+function renderSeriesPath(series, color, xPosition, yPosition) {
   let started = false;
   const path = series.points
     .map((point) => {
-      if (point.suppressed || point.value === null) {
+      if (point.totalPopulation === 0 || point.suppressed || point.value === null) {
         started = false;
         return "";
       }
@@ -416,18 +481,19 @@ function renderSeriesPath(series, xPosition, yPosition) {
     })
     .join(" ");
 
-  return `<path class="series-line" d="${path}" stroke="${series.color}"></path>`;
+  const dash = series.lineStyle === "dashed" ? ' stroke-dasharray="8 6"' : "";
+  return `<path class="series-line" d="${path}" stroke="${color}"${dash}></path>`;
 }
 
-function renderSeriesPoints(series, xPosition, yPosition) {
+function renderSeriesPoints(series, color, xPosition, yPosition) {
   return series.points
     .map((point) => {
-      if (point.suppressed || point.value === null) {
+      if (point.totalPopulation === 0 || point.suppressed || point.value === null) {
         return "";
       }
       return `
         <g>
-          <circle class="series-point" cx="${xPosition(point.year)}" cy="${yPosition(point.value)}" r="4" stroke="${series.color}"></circle>
+          <circle class="series-point" cx="${xPosition(point.year)}" cy="${yPosition(point.value)}" r="4" stroke="${color}"></circle>
           <title>${escapeHtml(series.label)} | ${point.year}: ${formatRate(point.value)} | Total population: ${formatPopulation(point.totalPopulation)}</title>
         </g>
       `;
@@ -436,9 +502,13 @@ function renderSeriesPoints(series, xPosition, yPosition) {
 }
 
 function getAllYears() {
-  return [...new Set(state.series.flatMap((series) => series.points.map((point) => point.year)))].sort(
-    (left, right) => left - right,
-  );
+  return [
+    ...new Set(
+      state.series.flatMap((series) =>
+        [...series.actual.points, ...series.projected.points].map((point) => point.year),
+      ),
+    ),
+  ].sort((left, right) => left - right);
 }
 
 function buildComparisonLabel(comparison) {
@@ -528,9 +598,12 @@ function downloadSeries() {
   const header = ["year"];
   state.series.forEach((series, index) => {
     header.push(`comparison_${index + 1}_label`);
-    header.push(`comparison_${index + 1}_value`);
-    header.push(`comparison_${index + 1}_total_population`);
-    header.push(`comparison_${index + 1}_suppressed`);
+    header.push(`comparison_${index + 1}_actual_value`);
+    header.push(`comparison_${index + 1}_actual_total_population`);
+    header.push(`comparison_${index + 1}_actual_suppressed`);
+    header.push(`comparison_${index + 1}_projected_value`);
+    header.push(`comparison_${index + 1}_projected_total_population`);
+    header.push(`comparison_${index + 1}_projected_suppressed`);
   });
 
   const lines = [
@@ -538,11 +611,15 @@ function downloadSeries() {
     ...years.map((year) => {
       const row = [year];
       state.series.forEach((series) => {
-        const point = series.points.find((entry) => entry.year === year);
+        const actualPoint = series.actual.points.find((entry) => entry.year === year);
+        const projectedPoint = series.projected.points.find((entry) => entry.year === year);
         row.push(csvEscape(series.label));
-        row.push(point && !point.suppressed ? point.value : point ? "Suppressed" : "No data");
-        row.push(point ? point.totalPopulation : "");
-        row.push(point ? (point.suppressed ? "TRUE" : "FALSE") : "");
+        row.push(getDownloadValue(actualPoint));
+        row.push(actualPoint ? actualPoint.totalPopulation : "");
+        row.push(actualPoint ? (actualPoint.suppressed ? "TRUE" : "FALSE") : "");
+        row.push(getDownloadValue(projectedPoint));
+        row.push(projectedPoint ? projectedPoint.totalPopulation : "");
+        row.push(projectedPoint ? (projectedPoint.suppressed ? "TRUE" : "FALSE") : "");
       });
       return row.join(",");
     }),
@@ -565,6 +642,13 @@ function formatPopulation(value) {
   return Number(value).toLocaleString(undefined, {
     maximumFractionDigits: 0,
   });
+}
+
+function getDownloadValue(point) {
+  if (!point || point.totalPopulation === 0) {
+    return "No data";
+  }
+  return point.suppressed ? "Suppressed" : point.value;
 }
 
 function matchesFilter(row, key, value) {
