@@ -1,5 +1,5 @@
 const DATA_URL = "./data/projections_age5cat_2006_2040.csv";
-const SUPPRESSION_THRESHOLD = 200;
+const SUPPRESSION_THRESHOLD = 2000;
 
 const OUTCOME_OPTIONS = [
   { key: "lfp", label: "Labor force participation rate" },
