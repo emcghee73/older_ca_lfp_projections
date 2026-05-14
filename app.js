@@ -1,25 +1,22 @@
 const DATA_URL = "./data/projections_age5cat_2006_2040.csv";
-const SUPPRESSION_THRESHOLD = 2000;
+const SUPPRESSION_THRESHOLD = 20000;
 
 const OUTCOME_OPTIONS = [
-  { key: "lfp", label: "Labor force participation rate" },
-  { key: "full_time", label: "Full time workers: share of total" },
-  { key: "own", label: "Homeowner: share of total" },
-  { key: "poor", label: "Poor: share of total" },
-  { key: "stress30", label: "Housing > 30% of income: share of total" },
-  { key: "stress50", label: "Housing > 50% of income: share of total" },
-  { key: "live_any_fam", label: "Lives with any family member: share of total" },
-  { key: "live_spouse", label: "Lives with spouse: share of total" },
-  { key: "full_time_lf", label: "Full time workers: share of labor force" },
-  { key: "own_lf", label: "Homeowner: share of labor force" },
-  { key: "poor_lf", label: "Poor: share of labor force" },
-  { key: "stress30_lf", label: "Housing > 30% of income: share of labor force" },
-  { key: "stress50_lf", label: "Housing > 50% of income: share of labor force" },
-  { key: "live_fam_lf", label: "Lives with any family member: share of labor force" },
-  { key: "live_sp_lf", label: "Lives with spouse: share of labor force" },
+  { key: "lfp", optionLabel: "Labor force participation rate", totalColumn: "lfp", laborColumn: null, fixedDenominator: "all" },
+  { key: "full_time", optionLabel: "Full time workers", totalColumn: "full_time", laborColumn: "full_time_lf", fixedDenominator: null },
+  { key: "fb", optionLabel: "Foreign-born", totalColumn: "fb", laborColumn: "fb_lf", fixedDenominator: null },
+  { key: "live_any_fam", optionLabel: "Lives with any family member", totalColumn: "live_any_fam", laborColumn: "live_fam_lf" },
+  { key: "live_spouse", optionLabel: "Lives with spouse", totalColumn: "live_spouse", laborColumn: "live_sp_lf" },
+  { key: "poor", optionLabel: "Poor", totalColumn: "poor", laborColumn: "poor_lf" },
+  { key: "own", optionLabel: "Homeowner", totalColumn: "own", laborColumn: "own_lf" },
+  { key: "stress30", optionLabel: "Housing > 30% of income", totalColumn: "stress30", laborColumn: "stress30_lf" },
+  { key: "stress50", optionLabel: "Housing > 50% of income", totalColumn: "stress50", laborColumn: "stress50_lf" },
 ];
 
-const OUTCOME_LABELS = Object.fromEntries(OUTCOME_OPTIONS.map((option) => [option.key, option.label]));
+const OUTCOME_OPTIONS_BY_KEY = Object.fromEntries(OUTCOME_OPTIONS.map((option) => [option.key, option]));
+const RAW_OUTCOME_COLUMNS = [...new Set(
+  OUTCOME_OPTIONS.flatMap((option) => [option.totalColumn, option.laborColumn].filter(Boolean)),
+)];
 const FILTER_CONFIG = [
   {
     key: "race_ethnicity",
@@ -52,13 +49,15 @@ const REQUIRED_DATA_COLUMNS = [
   "ed_hsgrad",
   "ed_somecoll",
   "ed_collgrad",
-  ...OUTCOME_OPTIONS.map((option) => option.key),
+  ...RAW_OUTCOME_COLUMNS,
 ];
 const SERIES_COLORS = ["#d27c2c", "#0d6c63", "#9c3d54", "#3568b0", "#5f5a9d", "#7d6a1f"];
 
 const state = {
   rows: [],
   series: [],
+  visibleSeries: [],
+  hiddenSeries: [],
   comparisons: [],
   nextComparisonId: 1,
 };
@@ -100,7 +99,8 @@ function createComparison() {
   const lastComparison = state.comparisons[state.comparisons.length - 1];
   const comparison = {
     id: state.nextComparisonId,
-    outcome: lastComparison ? lastComparison.outcome : "stress50",
+    outcome: lastComparison ? lastComparison.outcome : "lfp",
+    useLaborForce: lastComparison ? lastComparison.useLaborForce : false,
     race_ethnicity: "",
     gender: "",
     age_cat: "",
@@ -112,6 +112,10 @@ function createComparison() {
 }
 
 function renderComparisonControls() {
+  state.comparisons.forEach((comparison) => {
+    normalizeComparisonOutcome(comparison);
+  });
+
   comparisonList.innerHTML = state.comparisons
     .map(
       (comparison, index) => `
@@ -128,18 +132,26 @@ function renderComparisonControls() {
             }
           </div>
           <div class="comparison-grid">
-            ${renderSelectControl(comparison.id, "outcome", "Outcome", OUTCOME_OPTIONS, comparison.outcome, false)}
+            ${renderSelectControl(
+              comparison.id,
+              "outcome",
+              "Outcome",
+              getOutcomeOptions(),
+              comparison.outcome,
+              false,
+            )}
             ${FILTER_CONFIG.map((filter) =>
               renderSelectControl(comparison.id, filter.key, filter.label, filter.values, comparison[filter.key], true),
             ).join("")}
           </div>
+          ${renderDenominatorControls(comparison)}
         </section>
       `,
     )
     .join("");
 
-  comparisonList.querySelectorAll("select").forEach((select) => {
-    select.addEventListener("change", handleComparisonChange);
+  comparisonList.querySelectorAll("[data-field]").forEach((input) => {
+    input.addEventListener("change", handleComparisonChange);
   });
 
   comparisonList.querySelectorAll(".remove-comparison-button").forEach((button) => {
@@ -147,13 +159,54 @@ function renderComparisonControls() {
   });
 }
 
+function renderDenominatorControls(comparison) {
+  if (!comparisonSupportsDenominator(comparison)) {
+    return "";
+  }
+
+  const comparisonId = comparison.id;
+  const checked = comparison.useLaborForce;
+  const label = "Denominator";
+
+  return `
+    <div class="control denominator-control">
+      <span>${label}</span>
+      <div class="denominator-options">
+        <label class="denominator-option">
+          <input
+            type="radio"
+            name="denominator-${comparisonId}"
+            data-comparison-id="${comparisonId}"
+            data-field="useLaborForce"
+            value="false"
+            ${checked ? "" : "checked"}
+          >
+          <span>As a share of all adults</span>
+        </label>
+        <label class="denominator-option">
+          <input
+            type="radio"
+            name="denominator-${comparisonId}"
+            data-comparison-id="${comparisonId}"
+            data-field="useLaborForce"
+            value="true"
+            ${checked ? "checked" : ""}
+          >
+          <span>As a share of labor force</span>
+        </label>
+      </div>
+    </div>
+  `;
+}
+
 function renderSelectControl(comparisonId, key, label, options, selectedValue, includeAllOption) {
   const normalizedOptions = options.map((option) =>
     typeof option === "string" ? { key: option, label: option } : option,
   );
+  const controlClass = key === "outcome" ? "control control-wide" : "control";
 
   return `
-    <label class="control">
+    <label class="${controlClass}">
       <span>${label}</span>
       <select data-comparison-id="${comparisonId}" data-field="${key}">
         ${includeAllOption ? '<option value="">All</option>' : ""}
@@ -185,7 +238,14 @@ function handleComparisonChange(event) {
   const comparisonId = Number(event.currentTarget.dataset.comparisonId);
   const field = event.currentTarget.dataset.field;
   const comparison = state.comparisons.find((entry) => entry.id === comparisonId);
-  comparison[field] = event.currentTarget.value;
+  if (event.currentTarget.type === "checkbox") {
+    comparison[field] = event.currentTarget.checked;
+  } else if (event.currentTarget.type === "radio") {
+    comparison[field] = event.currentTarget.value === "true";
+  } else {
+    comparison[field] = event.currentTarget.value;
+  }
+  normalizeComparisonOutcome(comparison);
   renderComparisonControls();
   updateView();
 }
@@ -213,7 +273,7 @@ function parseCsv(text) {
     row.year = Number(row.year);
     row.totpop = Number(row.totpop);
 
-    OUTCOME_OPTIONS.forEach(({ key }) => {
+    RAW_OUTCOME_COLUMNS.forEach((key) => {
       row[key] = Number(row[key]);
     });
 
@@ -230,6 +290,8 @@ function parseCsv(text) {
 
 function updateView() {
   state.series = buildSeries(state.comparisons);
+  state.visibleSeries = state.series.filter((series) => !series.hidden);
+  state.hiddenSeries = state.series.filter((series) => series.hidden);
   renderSummary();
   renderTable();
   renderChart();
@@ -243,45 +305,53 @@ function buildSeries(comparisons) {
 }
 
 function buildComparisonSeries(comparison, filteredRows, index) {
+  const resolvedOutcome = getResolvedOutcome(comparison);
   const grouped = new Map();
 
   filteredRows.forEach((row) => {
-    if (!Number.isFinite(row[comparison.outcome])) {
-      return;
-    }
-
     const current =
       grouped.get(row.year) ||
       {
-        FALSE: { totalPopulation: 0, weightedSum: 0 },
-        TRUE: { totalPopulation: 0, weightedSum: 0 },
+        FALSE: { totalPopulation: 0, weightedSum: 0, validWeight: 0 },
+        TRUE: { totalPopulation: 0, weightedSum: 0, validWeight: 0 },
       };
 
     current[row.pred].totalPopulation += row.totpop;
-    current[row.pred].weightedSum += row[comparison.outcome] * row.totpop;
+    if (Number.isFinite(row[resolvedOutcome.columnKey])) {
+      current[row.pred].weightedSum += row[resolvedOutcome.columnKey] * row.totpop;
+      current[row.pred].validWeight += row.totpop;
+    }
     grouped.set(row.year, current);
   });
 
   const years = [...grouped.keys()].sort((left, right) => left - right);
   const label = buildComparisonLabel(comparison);
   const color = SERIES_COLORS[index % SERIES_COLORS.length];
+  const actualPoints = years.map((year) => buildPredPoint(year, grouped.get(year).FALSE));
+  const projectedPoints = years.map((year) => buildPredPoint(year, grouped.get(year).TRUE));
+  const positivePopulations = [...actualPoints, ...projectedPoints]
+    .map((point) => point.totalPopulation)
+    .filter((population) => population > 0);
+  const hidden = positivePopulations.some((population) => population < SUPPRESSION_THRESHOLD);
 
   return {
     ...comparison,
+    resolvedOutcomeLabel: resolvedOutcome.label,
     color,
     label,
+    hidden,
     matchedRows: filteredRows.length,
     actual: {
       key: "FALSE",
       label: `${label} | Actual`,
       lineStyle: "solid",
-      points: years.map((year) => buildPredPoint(year, grouped.get(year).FALSE)),
+      points: actualPoints,
     },
     projected: {
       key: "TRUE",
       label: `${label} | Projected`,
       lineStyle: "dashed",
-      points: years.map((year) => buildPredPoint(year, grouped.get(year).TRUE)),
+      points: projectedPoints,
     },
   };
 }
@@ -292,8 +362,8 @@ function buildPredPoint(year, values) {
     totalPopulation: values.totalPopulation,
     suppressed: values.totalPopulation > 0 && values.totalPopulation < SUPPRESSION_THRESHOLD,
     value:
-      values.totalPopulation >= SUPPRESSION_THRESHOLD
-        ? values.weightedSum / values.totalPopulation
+      values.validWeight > 0
+        ? values.weightedSum / values.validWeight
         : null,
   };
 }
@@ -308,13 +378,33 @@ function comparisonMatchesRow(comparison, row) {
 }
 
 function renderSummary() {
-  const comparisonText = state.series.map((series) => series.label).join(" | ");
+  if (state.visibleSeries.length === 0 && state.hiddenSeries.length > 0) {
+    selectionSummary.textContent = `All selected comparisons are hidden because total population falls below ${formatPopulation(
+      SUPPRESSION_THRESHOLD,
+    )} in at least one year in the data.`;
+    yearCount.textContent = "0";
+    return;
+  }
+
+  if (state.visibleSeries.length === 0) {
+    selectionSummary.textContent = "No rows match the current comparison selections.";
+    yearCount.textContent = "0";
+    return;
+  }
+
+  const comparisonText = state.visibleSeries.map((series) => series.label).join(" | ");
   const years = new Set(
-    state.series.flatMap((series) =>
+    state.visibleSeries.flatMap((series) =>
       [...series.actual.points, ...series.projected.points].map((point) => point.year),
     ),
   );
-  selectionSummary.textContent = `${comparisonText}. Each comparison is split into actual data (${String.raw`pred=FALSE`}, solid) and projections (${String.raw`pred=TRUE`}, dashed). All values are collapsed by year using total population as weights. Cells with total population below ${SUPPRESSION_THRESHOLD} are suppressed.`;
+  const hiddenMessage =
+    state.hiddenSeries.length > 0
+      ? ` ${state.hiddenSeries.length} comparison${state.hiddenSeries.length === 1 ? "" : "s"} hidden because total population falls below ${formatPopulation(
+          SUPPRESSION_THRESHOLD,
+        )} in at least one year in the data.`
+      : "";
+  selectionSummary.textContent = `${comparisonText}. Each comparison is split into actual data (${String.raw`pred=FALSE`}, solid) and projections (${String.raw`pred=TRUE`}, dashed). All values are collapsed by year using total population as weights.${hiddenMessage}`;
   yearCount.textContent = String(years.size);
 }
 
@@ -323,7 +413,7 @@ function renderTable() {
   resultsHead.innerHTML = `
     <tr>
       <th>Year</th>
-      ${state.series
+      ${state.visibleSeries
         .map(
           (series) => `
             <th>${escapeHtml(series.label)}<br><span class="cell-meta">Actual</span></th>
@@ -334,14 +424,21 @@ function renderTable() {
     </tr>
   `;
 
+  if (state.visibleSeries.length === 0 && state.hiddenSeries.length > 0) {
+    resultsBody.innerHTML = `<tr><td colspan="1">All selected comparisons are hidden because total population falls below ${formatPopulation(
+      SUPPRESSION_THRESHOLD,
+    )} in at least one year in the data.</td></tr>`;
+    return;
+  }
+
   if (years.length === 0) {
-    resultsBody.innerHTML = `<tr><td colspan="${state.series.length * 2 + 1}">No rows match the current comparison selections.</td></tr>`;
+    resultsBody.innerHTML = `<tr><td colspan="${state.visibleSeries.length * 2 + 1 || 1}">No rows match the current comparison selections.</td></tr>`;
     return;
   }
 
   resultsBody.innerHTML = years
     .map((year) => {
-      const cells = state.series
+      const cells = state.visibleSeries
         .map((series) => {
           const actualPoint = series.actual.points.find((entry) => entry.year === year);
           const projectedPoint = series.projected.points.find((entry) => entry.year === year);
@@ -361,15 +458,25 @@ function renderTableCell(point) {
   if (point.suppressed) {
     return `<td>Suppressed<br><span class="cell-meta">Total population: ${formatPopulation(point.totalPopulation)}</span></td>`;
   }
+  if (point.value === null) {
+    return `<td>No data<br><span class="cell-meta">Total population: ${formatPopulation(point.totalPopulation)}</span></td>`;
+  }
   return `<td>${formatRate(point.value)}<br><span class="cell-meta">Total population: ${formatPopulation(point.totalPopulation)}</span></td>`;
 }
 
 function renderChart() {
-  const visibleValues = state.series.flatMap((series) =>
+  const visibleValues = state.visibleSeries.flatMap((series) =>
     [series.actual, series.projected].flatMap((predSeries) =>
       predSeries.points.flatMap((point) => (point.suppressed || point.value === null ? [] : [point.value])),
     ),
   );
+
+  if (state.visibleSeries.length === 0 && state.hiddenSeries.length > 0) {
+    chart.innerHTML = `<div class="chart-empty">All selected comparisons are hidden because total population falls below ${formatPopulation(
+      SUPPRESSION_THRESHOLD,
+    )} in at least one year in the data.</div>`;
+    return;
+  }
 
   if (visibleValues.length === 0) {
     chart.innerHTML =
@@ -429,15 +536,19 @@ function renderChart() {
       <line class="axis" x1="${margin.left}" x2="${margin.left}" y1="${margin.top}" y2="${height - margin.bottom}"></line>
       <line class="axis" x1="${margin.left}" x2="${width - margin.right}" y1="${height - margin.bottom}" y2="${height - margin.bottom}"></line>
       ${state.series
+        .filter((series) => !series.hidden)
         .map((series) => renderSeriesPath(series.actual, series.color, xPosition, yPosition))
         .join("")}
       ${state.series
+        .filter((series) => !series.hidden)
         .map((series) => renderSeriesPath(series.projected, series.color, xPosition, yPosition))
         .join("")}
       ${state.series
+        .filter((series) => !series.hidden)
         .map((series) => renderSeriesPoints(series.actual, series.color, xPosition, yPosition))
         .join("")}
       ${state.series
+        .filter((series) => !series.hidden)
         .map((series) => renderSeriesPoints(series.projected, series.color, xPosition, yPosition))
         .join("")}
       ${yearTicks
@@ -451,7 +562,7 @@ function renderChart() {
       <text class="axis-label" x="16" y="${height / 2}" text-anchor="middle" transform="rotate(-90 16 ${height / 2})">Weighted Mean</text>
     </svg>
     <div class="legend">
-      ${state.series
+      ${state.visibleSeries
         .map(
           (series) => `
             <span class="legend-item">
@@ -504,7 +615,7 @@ function renderSeriesPoints(series, color, xPosition, yPosition) {
 function getAllYears() {
   return [
     ...new Set(
-      state.series.flatMap((series) =>
+      state.visibleSeries.flatMap((series) =>
         [...series.actual.points, ...series.projected.points].map((point) => point.year),
       ),
     ),
@@ -512,7 +623,7 @@ function getAllYears() {
 }
 
 function buildComparisonLabel(comparison) {
-  const parts = [OUTCOME_LABELS[comparison.outcome]];
+  const parts = [getResolvedOutcome(comparison).label];
   FILTER_CONFIG.forEach((filter) => {
     if (comparison[filter.key]) {
       parts.push(`${filter.label}: ${comparison[filter.key]}`);
@@ -590,13 +701,13 @@ function stripQuotes(value) {
 }
 
 function downloadSeries() {
-  if (state.series.length === 0) {
+  if (state.visibleSeries.length === 0) {
     return;
   }
 
   const years = getAllYears();
   const header = ["year"];
-  state.series.forEach((series, index) => {
+  state.visibleSeries.forEach((series, index) => {
     header.push(`comparison_${index + 1}_label`);
     header.push(`comparison_${index + 1}_actual_value`);
     header.push(`comparison_${index + 1}_actual_total_population`);
@@ -610,7 +721,7 @@ function downloadSeries() {
     header.join(","),
     ...years.map((year) => {
       const row = [year];
-      state.series.forEach((series) => {
+      state.visibleSeries.forEach((series) => {
         const actualPoint = series.actual.points.find((entry) => entry.year === year);
         const projectedPoint = series.projected.points.find((entry) => entry.year === year);
         row.push(csvEscape(series.label));
@@ -648,7 +759,55 @@ function getDownloadValue(point) {
   if (!point || point.totalPopulation === 0) {
     return "No data";
   }
+  if (point.value === null) {
+    return "No data";
+  }
   return point.suppressed ? "Suppressed" : point.value;
+}
+
+function getOutcomeOptions() {
+  return OUTCOME_OPTIONS.map((option) => ({
+    key: option.key,
+    label: option.optionLabel,
+  }));
+}
+
+function normalizeComparisonOutcome(comparison) {
+  const availableOptions = getOutcomeOptions();
+  if (!availableOptions.some((option) => option.key === comparison.outcome)) {
+    comparison.outcome = availableOptions[0].key;
+  }
+}
+
+function getResolvedOutcome(comparison) {
+  const definition = OUTCOME_OPTIONS_BY_KEY[comparison.outcome];
+  const useLaborForce =
+    definition.fixedDenominator === "labor"
+      ? true
+      : definition.fixedDenominator === "all"
+        ? false
+        : comparison.useLaborForce;
+  const columnKey = useLaborForce ? definition.laborColumn : definition.totalColumn;
+  const label = getResolvedOutcomeLabel(definition, useLaborForce);
+
+  return {
+    ...definition,
+    columnKey,
+    label,
+  };
+}
+
+function getResolvedOutcomeLabel(definition, useLaborForce) {
+  if (definition.key === "lfp") {
+    return definition.optionLabel;
+  }
+
+  return `${definition.optionLabel}: share of ${useLaborForce ? "labor force" : "all adults"}`;
+}
+
+function comparisonSupportsDenominator(comparison) {
+  const definition = OUTCOME_OPTIONS_BY_KEY[comparison.outcome];
+  return !definition.fixedDenominator;
 }
 
 function matchesFilter(row, key, value) {

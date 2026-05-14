@@ -97,6 +97,39 @@ h1 {
   font-weight: 700;
 }
 
+.denominator-control {
+  margin-top: 14px;
+}
+
+.denominator-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.denominator-option {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-height: 56px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(29, 26, 22, 0.16);
+  background: #fffdf8;
+  font-family: Arial, sans-serif;
+  font-size: 0.92rem;
+  line-height: 1.35;
+}
+
+.denominator-option input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.denominator-option span {
+  font-weight: 400;
+}
+
 select,
 .button {
   border-radius: 14px;
@@ -105,6 +138,10 @@ select,
   color: var(--text);
   padding: 12px 14px;
   font: inherit;
+}
+
+select {
+  width: 100%;
 }
 
 select:focus,
@@ -171,8 +208,12 @@ select:focus,
 
 .comparison-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 14px;
+}
+
+.control-wide {
+  grid-column: 1 / -1;
 }
 
 .results-grid {
