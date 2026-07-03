@@ -8,6 +8,14 @@ const OUTCOME_OPTIONS = [
   { key: "live_any_fam", optionLabel: "Lives with any family member", totalColumn: "live_any_fam", laborColumn: "live_fam_lf" },
   { key: "live_spouse", optionLabel: "Lives with spouse", totalColumn: "live_spouse", laborColumn: "live_sp_lf" },
   { key: "poor", optionLabel: "Poor", totalColumn: "poor", laborColumn: "poor_lf" },
+  {
+    key: "poor_if_no_wage",
+    optionLabel: "Poor if not working",
+    totalColumn: "poor_if_no_wage",
+    laborColumn: null,
+    fixedDenominator: "all",
+    hideWhenUseLaborForce: true,
+  },
   { key: "own", optionLabel: "Homeowner", totalColumn: "own", laborColumn: "own_lf" },
   { key: "stress30", optionLabel: "Housing > 30% of income", totalColumn: "stress30", laborColumn: "stress30_lf" },
   { key: "stress50", optionLabel: "Housing > 50% of income", totalColumn: "stress50", laborColumn: "stress50_lf" },
@@ -17,6 +25,7 @@ const OUTCOME_OPTIONS_BY_KEY = Object.fromEntries(OUTCOME_OPTIONS.map((option) =
 const RAW_OUTCOME_COLUMNS = [...new Set(
   OUTCOME_OPTIONS.flatMap((option) => [option.totalColumn, option.laborColumn].filter(Boolean)),
 )];
+const RAW_OUTCOME_COLUMNS_SET = new Set(RAW_OUTCOME_COLUMNS);
 const FILTER_CONFIG = [
   {
     key: "race_ethnicity",
@@ -49,7 +58,6 @@ const REQUIRED_DATA_COLUMNS = [
   "ed_hsgrad",
   "ed_somecoll",
   "ed_collgrad",
-  ...RAW_OUTCOME_COLUMNS,
 ];
 const SERIES_COLORS = ["#d27c2c", "#0d6c63", "#9c3d54", "#3568b0", "#5f5a9d", "#7d6a1f"];
 
@@ -60,6 +68,7 @@ const state = {
   hiddenSeries: [],
   comparisons: [],
   nextComparisonId: 1,
+  availableOutcomeKeys: OUTCOME_OPTIONS.map((option) => option.key),
 };
 
 const comparisonList = document.querySelector("#comparison-list");
@@ -78,16 +87,17 @@ init().catch((error) => {
 });
 
 async function init() {
-  state.comparisons = [createComparison()];
-  renderComparisonControls();
-
   const response = await fetch(DATA_URL, { cache: "no-store" });
   if (!response.ok) {
     throw new Error(`Failed to fetch dataset: ${response.status}`);
   }
 
   const text = await response.text();
-  state.rows = parseCsv(text);
+  const parsed = parseCsv(text);
+  state.rows = parsed.rows;
+  state.availableOutcomeKeys = parsed.availableOutcomeKeys;
+  state.comparisons = [createComparison()];
+  renderComparisonControls();
 
   addComparisonButton.addEventListener("click", addComparison);
   downloadButton.addEventListener("click", downloadSeries);
@@ -136,7 +146,7 @@ function renderComparisonControls() {
               comparison.id,
               "outcome",
               "Outcome",
-              getOutcomeOptions(),
+              getOutcomeOptions(comparison),
               comparison.outcome,
               false,
             )}
@@ -262,6 +272,7 @@ function parseCsv(text) {
       throw new Error(`Dataset is missing required column: ${header}`);
     }
   });
+  const numericOutcomeColumns = headers.filter((header) => RAW_OUTCOME_COLUMNS_SET.has(header));
 
   const rows = records.slice(1).map((values) => {
     const row = {};
@@ -273,7 +284,7 @@ function parseCsv(text) {
     row.year = Number(row.year);
     row.totpop = Number(row.totpop);
 
-    RAW_OUTCOME_COLUMNS.forEach((key) => {
+    numericOutcomeColumns.forEach((key) => {
       row[key] = Number(row[key]);
     });
 
@@ -285,7 +296,10 @@ function parseCsv(text) {
     throw new Error("Dataset rows could not be parsed.");
   }
 
-  return validRows;
+  return {
+    rows: validRows,
+    availableOutcomeKeys: getAvailableOutcomeKeys(headers),
+  };
 }
 
 function updateView() {
@@ -765,17 +779,30 @@ function getDownloadValue(point) {
   return point.suppressed ? "Suppressed" : point.value;
 }
 
-function getOutcomeOptions() {
-  return OUTCOME_OPTIONS.map((option) => ({
+function getOutcomeOptions(comparison) {
+  return getAvailableOutcomeDefinitions(comparison).map((option) => ({
     key: option.key,
     label: option.optionLabel,
   }));
 }
 
 function normalizeComparisonOutcome(comparison) {
-  const availableOptions = getOutcomeOptions();
+  const availableOptions = getOutcomeOptions(comparison);
+  if (availableOptions.length === 0) {
+    comparison.outcome = OUTCOME_OPTIONS[0].key;
+    comparison.useLaborForce = false;
+    return;
+  }
+
   if (!availableOptions.some((option) => option.key === comparison.outcome)) {
     comparison.outcome = availableOptions[0].key;
+  }
+
+  const definition = OUTCOME_OPTIONS_BY_KEY[comparison.outcome];
+  if (definition.fixedDenominator === "all") {
+    comparison.useLaborForce = false;
+  } else if (definition.fixedDenominator === "labor") {
+    comparison.useLaborForce = true;
   }
 }
 
@@ -798,7 +825,7 @@ function getResolvedOutcome(comparison) {
 }
 
 function getResolvedOutcomeLabel(definition, useLaborForce) {
-  if (definition.key === "lfp") {
+  if (definition.fixedDenominator) {
     return definition.optionLabel;
   }
 
@@ -808,6 +835,38 @@ function getResolvedOutcomeLabel(definition, useLaborForce) {
 function comparisonSupportsDenominator(comparison) {
   const definition = OUTCOME_OPTIONS_BY_KEY[comparison.outcome];
   return !definition.fixedDenominator;
+}
+
+function getAvailableOutcomeDefinitions(comparison) {
+  const availableKeys = new Set(state.availableOutcomeKeys);
+  return OUTCOME_OPTIONS.filter((definition) => {
+    if (!availableKeys.has(definition.key)) {
+      return false;
+    }
+
+    if (comparison?.useLaborForce && definition.hideWhenUseLaborForce) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
+function getAvailableOutcomeKeys(headers) {
+  const headerSet = new Set(headers);
+  return OUTCOME_OPTIONS
+    .filter((definition) => {
+      if (!headerSet.has(definition.totalColumn)) {
+        return false;
+      }
+
+      if (!definition.laborColumn || definition.fixedDenominator === "all") {
+        return true;
+      }
+
+      return headerSet.has(definition.laborColumn);
+    })
+    .map((definition) => definition.key);
 }
 
 function matchesFilter(row, key, value) {
