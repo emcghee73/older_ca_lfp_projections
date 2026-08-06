@@ -7,15 +7,8 @@ const OUTCOME_OPTIONS = [
   { key: "fb", optionLabel: "Foreign-born", totalColumn: "fb", laborColumn: "fb_lf", fixedDenominator: null },
   { key: "live_any_fam", optionLabel: "Lives with any family member", totalColumn: "live_any_fam", laborColumn: "live_fam_lf" },
   { key: "live_spouse", optionLabel: "Lives with spouse", totalColumn: "live_spouse", laborColumn: "live_sp_lf" },
-  { key: "poor", optionLabel: "Poor", totalColumn: "poor", laborColumn: "poor_lf" },
-  {
-    key: "poor_if_no_wage",
-    optionLabel: "Poor if not working",
-    totalColumn: "poor_if_no_wage",
-    laborColumn: null,
-    fixedDenominator: "all",
-    hideWhenUseLaborForce: true,
-  },
+  { key: "cpmU100", optionLabel: "Poverty*", totalColumn: "cpmU100", laborColumn: "cpmU100_lf" },
+  { key: "cpmU150", optionLabel: "Near poverty*", totalColumn: "cpmU150", laborColumn: "cpmU150_lf" },
   { key: "own", optionLabel: "Homeowner", totalColumn: "own", laborColumn: "own_lf" },
   { key: "stress30", optionLabel: "Housing > 30% of income", totalColumn: "stress30", laborColumn: "stress30_lf" },
   { key: "stress50", optionLabel: "Housing > 50% of income", totalColumn: "stress50", laborColumn: "stress50_lf" },
@@ -36,7 +29,7 @@ const FILTER_CONFIG = [
   {
     key: "age_cat",
     label: "Age Group",
-    values: ["55-59", "60-64", "65-69", "70-74", "75-79", "80-84", "85-89", "90+"],
+    values: ["Under 65", "65 and older", "55-59", "60-64", "65-69", "70-74", "75-79", "80-84", "85-89", "90+"],
   },
   {
     key: "education",
@@ -285,7 +278,7 @@ function parseCsv(text) {
     row.totpop = Number(row.totpop);
 
     numericOutcomeColumns.forEach((key) => {
-      row[key] = Number(row[key]);
+      row[key] = parseNullableNumber(row[key]);
     });
 
     return row;
@@ -714,6 +707,20 @@ function stripQuotes(value) {
   return value.replace(/^"(.*)"$/, "$1");
 }
 
+function parseNullableNumber(value) {
+  if (typeof value !== "string") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  const trimmed = value.trim();
+  if (trimmed === "" || trimmed.toUpperCase() === "NA" || trimmed.toUpperCase() === "NAN") {
+    return null;
+  }
+
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function downloadSeries() {
   if (state.visibleSeries.length === 0) {
     return;
@@ -876,10 +883,23 @@ function matchesFilter(row, key, value) {
   if (key === "gender") {
     return getGender(row) === value;
   }
+  if (key === "age_cat") {
+    return matchesAgeCategory(row.age_cat, value);
+  }
   if (key === "education") {
     return getEducation(row) === value;
   }
   return row[key] === value;
+}
+
+function matchesAgeCategory(ageCategory, selectedValue) {
+  if (selectedValue === "Under 65") {
+    return ageCategory === "55-59" || ageCategory === "60-64";
+  }
+  if (selectedValue === "65 and older") {
+    return !matchesAgeCategory(ageCategory, "Under 65");
+  }
+  return ageCategory === selectedValue;
 }
 
 function getRaceEthnicity(row) {
