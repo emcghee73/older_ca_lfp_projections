@@ -74,6 +74,7 @@ const resultsHead = document.querySelector("#results-head");
 const resultsBody = document.querySelector("#results-body");
 const chart = document.querySelector("#chart");
 const downloadButton = document.querySelector("#download-button");
+const outcomeNote = document.querySelector("#outcome-note");
 
 init().catch((error) => {
   console.error(error);
@@ -162,6 +163,12 @@ function renderComparisonControls() {
   comparisonList.querySelectorAll(".remove-comparison-button").forEach((button) => {
     button.addEventListener("click", removeComparison);
   });
+
+  renderOutcomeNote();
+}
+
+function renderOutcomeNote() {
+  outcomeNote.hidden = !state.comparisons.some((comparison) => POVERTY_OUTCOME_KEYS.has(comparison.outcome));
 }
 
 function renderDenominatorControls(comparison) {
