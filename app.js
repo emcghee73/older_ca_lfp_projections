@@ -168,7 +168,13 @@ function renderComparisonControls() {
 }
 
 function renderOutcomeNote() {
-  outcomeNote.hidden = !state.comparisons.some((comparison) => POVERTY_OUTCOME_KEYS.has(comparison.outcome));
+  if (!outcomeNote) {
+    return;
+  }
+
+  const showNote = state.comparisons.some((comparison) => POVERTY_OUTCOME_KEYS.has(comparison.outcome));
+  outcomeNote.hidden = !showNote;
+  outcomeNote.style.display = showNote ? "block" : "none";
 }
 
 function renderDenominatorControls(comparison) {
