@@ -336,6 +336,11 @@ select:focus,
   border-top-style: dashed;
 }
 
+.dotted-style::before {
+  border-top-style: dotted;
+  border-top-width: 3px;
+}
+
 .axis-label,
 .tick-label {
   fill: var(--muted);

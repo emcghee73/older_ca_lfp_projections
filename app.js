@@ -1,5 +1,7 @@
 const DATA_URL = "./data/projections_age5cat_2006_2040.csv";
 const SUPPRESSION_THRESHOLD = 20000;
+const POVERTY_OUTCOME_KEYS = new Set(["cpmU100", "cpmU150"]);
+const INTERPOLATED_POVERTY_YEAR = 2020;
 
 const OUTCOME_OPTIONS = [
   { key: "lfp", optionLabel: "Labor force participation rate", totalColumn: "lfp", laborColumn: null, fixedDenominator: "all" },
@@ -29,7 +31,7 @@ const FILTER_CONFIG = [
   {
     key: "age_cat",
     label: "Age Group",
-    values: ["Under 65", "65 and older", "55-59", "60-64", "65-69", "70-74", "75-79", "80-84", "85-89", "90+"],
+    values: ["55-64", "65 and older", "55-59", "60-64", "65-69", "70-74", "75-79", "80-84", "85-89", "90+"],
   },
   {
     key: "education",
@@ -334,7 +336,10 @@ function buildComparisonSeries(comparison, filteredRows, index) {
   const years = [...grouped.keys()].sort((left, right) => left - right);
   const label = buildComparisonLabel(comparison);
   const color = SERIES_COLORS[index % SERIES_COLORS.length];
-  const actualPoints = years.map((year) => buildPredPoint(year, grouped.get(year).FALSE));
+  const actualPoints = maybeInterpolatePovertyActualPoints(
+    comparison,
+    years.map((year) => buildPredPoint(year, grouped.get(year).FALSE)),
+  );
   const projectedPoints = years.map((year) => buildPredPoint(year, grouped.get(year).TRUE));
   const positivePopulations = [...actualPoints, ...projectedPoints]
     .map((point) => point.totalPopulation)
@@ -368,11 +373,60 @@ function buildPredPoint(year, values) {
     year,
     totalPopulation: values.totalPopulation,
     suppressed: values.totalPopulation > 0 && values.totalPopulation < SUPPRESSION_THRESHOLD,
+    interpolated: false,
     value:
       values.validWeight > 0
         ? values.weightedSum / values.validWeight
         : null,
   };
+}
+
+function maybeInterpolatePovertyActualPoints(comparison, points) {
+  if (!POVERTY_OUTCOME_KEYS.has(comparison.outcome)) {
+    return points;
+  }
+
+  const interpolatedIndex = points.findIndex((point) => point.year === INTERPOLATED_POVERTY_YEAR);
+  if (interpolatedIndex === -1) {
+    return points;
+  }
+
+  const interpolatedPoint = points[interpolatedIndex];
+  if (
+    interpolatedPoint.value !== null ||
+    interpolatedPoint.suppressed ||
+    interpolatedPoint.totalPopulation === 0
+  ) {
+    return points;
+  }
+
+  const previousPoint = points[interpolatedIndex - 1];
+  const nextPoint = points[interpolatedIndex + 1];
+  if (
+    !previousPoint ||
+    !nextPoint ||
+    previousPoint.value === null ||
+    nextPoint.value === null ||
+    previousPoint.suppressed ||
+    nextPoint.suppressed
+  ) {
+    return points;
+  }
+
+  const interpolatedValue =
+    previousPoint.value +
+    ((nextPoint.value - previousPoint.value) * (INTERPOLATED_POVERTY_YEAR - previousPoint.year)) /
+      (nextPoint.year - previousPoint.year);
+
+  return points.map((point, index) =>
+    index === interpolatedIndex
+      ? {
+          ...point,
+          interpolated: true,
+          value: interpolatedValue,
+        }
+      : point,
+  );
 }
 
 function comparisonMatchesRow(comparison, row) {
@@ -468,7 +522,8 @@ function renderTableCell(point) {
   if (point.value === null) {
     return `<td>No data<br><span class="cell-meta">Total population: ${formatPopulation(point.totalPopulation)}</span></td>`;
   }
-  return `<td>${formatRate(point.value)}<br><span class="cell-meta">Total population: ${formatPopulation(point.totalPopulation)}</span></td>`;
+  const interpolationText = point.interpolated ? "<br><span class=\"cell-meta\">Interpolated</span>" : "";
+  return `<td>${formatRate(point.value)}<br><span class="cell-meta">Total population: ${formatPopulation(point.totalPopulation)}</span>${interpolationText}</td>`;
 }
 
 function renderChart() {
@@ -544,11 +599,11 @@ function renderChart() {
       <line class="axis" x1="${margin.left}" x2="${width - margin.right}" y1="${height - margin.bottom}" y2="${height - margin.bottom}"></line>
       ${state.series
         .filter((series) => !series.hidden)
-        .map((series) => renderSeriesPath(series.actual, series.color, xPosition, yPosition))
+        .map((series) => renderSeriesSegments(series.actual, series.color, xPosition, yPosition))
         .join("")}
       ${state.series
         .filter((series) => !series.hidden)
-        .map((series) => renderSeriesPath(series.projected, series.color, xPosition, yPosition))
+        .map((series) => renderSeriesSegments(series.projected, series.color, xPosition, yPosition))
         .join("")}
       ${state.series
         .filter((series) => !series.hidden)
@@ -581,26 +636,43 @@ function renderChart() {
           `,
         )
         .join("")}
+      ${
+        state.visibleSeries.some((series) => series.actual.points.some((point) => point.interpolated))
+          ? '<span class="legend-item"><span class="legend-style dotted-style">Interpolated 2020</span></span>'
+          : ""
+      }
     </div>
   `;
 }
 
-function renderSeriesPath(series, color, xPosition, yPosition) {
-  let started = false;
-  const path = series.points
-    .map((point) => {
-      if (point.totalPopulation === 0 || point.suppressed || point.value === null) {
-        started = false;
+function renderSeriesSegments(series, color, xPosition, yPosition) {
+  return series.points
+    .slice(1)
+    .map((point, index) => {
+      const previousPoint = series.points[index];
+      if (!isRenderablePoint(previousPoint) || !isRenderablePoint(point)) {
         return "";
       }
-      const command = started ? "L" : "M";
-      started = true;
-      return `${command} ${xPosition(point.year)} ${yPosition(point.value)}`;
+      const dash = getSeriesDash(series, previousPoint, point);
+      return `<path class="series-line" d="M ${xPosition(previousPoint.year)} ${yPosition(previousPoint.value)} L ${xPosition(
+        point.year,
+      )} ${yPosition(point.value)}" stroke="${color}"${dash}></path>`;
     })
-    .join(" ");
+    .join("");
+}
 
-  const dash = series.lineStyle === "dashed" ? ' stroke-dasharray="8 6"' : "";
-  return `<path class="series-line" d="${path}" stroke="${color}"${dash}></path>`;
+function getSeriesDash(series, startPoint, endPoint) {
+  if (series.lineStyle === "dashed") {
+    return ' stroke-dasharray="8 6"';
+  }
+  if (startPoint.interpolated || endPoint.interpolated) {
+    return ' stroke-dasharray="1 6"';
+  }
+  return "";
+}
+
+function isRenderablePoint(point) {
+  return point.totalPopulation > 0 && !point.suppressed && point.value !== null;
 }
 
 function renderSeriesPoints(series, color, xPosition, yPosition) {
@@ -612,7 +684,9 @@ function renderSeriesPoints(series, color, xPosition, yPosition) {
       return `
         <g>
           <circle class="series-point" cx="${xPosition(point.year)}" cy="${yPosition(point.value)}" r="4" stroke="${color}"></circle>
-          <title>${escapeHtml(series.label)} | ${point.year}: ${formatRate(point.value)} | Total population: ${formatPopulation(point.totalPopulation)}</title>
+          <title>${escapeHtml(series.label)} | ${point.year}: ${formatRate(point.value)} | Total population: ${formatPopulation(
+            point.totalPopulation,
+          )}${point.interpolated ? " | Interpolated" : ""}</title>
         </g>
       `;
     })
@@ -893,11 +967,11 @@ function matchesFilter(row, key, value) {
 }
 
 function matchesAgeCategory(ageCategory, selectedValue) {
-  if (selectedValue === "Under 65") {
+  if (selectedValue === "55-64") {
     return ageCategory === "55-59" || ageCategory === "60-64";
   }
   if (selectedValue === "65 and older") {
-    return !matchesAgeCategory(ageCategory, "Under 65");
+    return !matchesAgeCategory(ageCategory, "55-64");
   }
   return ageCategory === selectedValue;
 }
