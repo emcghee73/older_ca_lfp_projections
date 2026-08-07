@@ -681,6 +681,9 @@ function renderSeriesPoints(series, color, xPosition, yPosition) {
       if (point.totalPopulation === 0 || point.suppressed || point.value === null) {
         return "";
       }
+      if (point.interpolated) {
+        return "";
+      }
       return `
         <g>
           <circle class="series-point" cx="${xPosition(point.year)}" cy="${yPosition(point.value)}" r="4" stroke="${color}"></circle>
