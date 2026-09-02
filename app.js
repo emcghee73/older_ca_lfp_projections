@@ -74,6 +74,8 @@ const selectionSummary = document.querySelector("#selection-summary");
 const resultsHead = document.querySelector("#results-head");
 const resultsBody = document.querySelector("#results-body");
 const chart = document.querySelector("#chart");
+const chartPanel = document.querySelector(".chart-panel");
+const chartTooltip = document.querySelector("#chart-tooltip");
 const chartDetails = document.querySelector("#chart-details");
 const tablePanel = document.querySelector("#table-panel");
 const resultsToggleButton = document.querySelector("#results-toggle-button");
@@ -102,6 +104,9 @@ async function init() {
   addComparisonButton.addEventListener("click", addComparison);
   downloadButton.addEventListener("click", downloadSeries);
   resultsToggleButton.addEventListener("click", toggleResultsView);
+  chart.addEventListener("pointerover", showChartTooltip);
+  chart.addEventListener("pointermove", moveChartTooltip);
+  chart.addEventListener("pointerleave", hideChartTooltip);
 
   updateView();
 }
@@ -517,6 +522,9 @@ function renderResultsView() {
   chart.hidden = showTable;
   chartDetails.hidden = showTable;
   tablePanel.hidden = !showTable;
+  if (showTable) {
+    hideChartTooltip();
+  }
   resultsToggleButton.textContent = showTable ? "Show figure" : "Show data";
   resultsToggleButton.setAttribute("aria-pressed", String(showTable));
 }
@@ -583,6 +591,7 @@ function renderTableCell(point) {
 }
 
 function renderChart() {
+  hideChartTooltip();
   const visibleValues = state.visibleSeries.flatMap((series) =>
     [series.actual, series.projected].flatMap((predSeries) =>
       predSeries.points.flatMap((point) => (isRenderablePoint(point) ? [getDisplayValue(point)] : [])),
@@ -741,16 +750,56 @@ function renderSeriesPoints(series, color, xPosition, yPosition) {
       if (point.interpolated && state.valueFormat === "percent") {
         return "";
       }
+      const tooltipText = buildPointTooltipText(series, point);
       return `
-        <g>
+        <g class="series-point-group" data-tooltip="${escapeHtml(tooltipText)}">
+          <circle class="series-point-hit" cx="${xPosition(point.year)}" cy="${yPosition(getDisplayValue(point))}" r="12"></circle>
           <circle class="series-point" cx="${xPosition(point.year)}" cy="${yPosition(getDisplayValue(point))}" r="4" stroke="${color}"></circle>
-          <title>${escapeHtml(series.label)} | ${point.year}: ${formatDisplayValue(getDisplayValue(point))}${
-            state.valueFormat === "percent" ? ` | Total population: ${formatPopulation(point.totalPopulation)}` : ""
-          }${point.interpolated && state.valueFormat === "percent" ? " | Interpolated" : ""}</title>
         </g>
       `;
     })
     .join("");
+}
+
+function buildPointTooltipText(series, point) {
+  const valueLabel = state.valueFormat === "raw" ? "Raw count" : "Percentage";
+  const interpolationLabel = point.interpolated && state.valueFormat === "percent" ? "\nInterpolated" : "";
+  return `${series.label}\n${point.year}\n${valueLabel}: ${formatDisplayValue(getDisplayValue(point))}\nTotal population: ${formatPopulation(
+    point.totalPopulation,
+  )}${interpolationLabel}`;
+}
+
+function showChartTooltip(event) {
+  const pointGroup = event.target.closest(".series-point-group");
+  if (!pointGroup) {
+    return;
+  }
+
+  chartTooltip.textContent = pointGroup.dataset.tooltip;
+  chartTooltip.hidden = false;
+  positionChartTooltip(event);
+}
+
+function moveChartTooltip(event) {
+  if (!chartTooltip.hidden) {
+    positionChartTooltip(event);
+  }
+}
+
+function positionChartTooltip(event) {
+  const panelBounds = chartPanel.getBoundingClientRect();
+  const gap = 12;
+  let left = event.clientX - panelBounds.left + gap;
+  let top = event.clientY - panelBounds.top + gap;
+
+  left = Math.max(gap, Math.min(left, panelBounds.width - chartTooltip.offsetWidth - gap));
+  top = Math.max(gap, Math.min(top, panelBounds.height - chartTooltip.offsetHeight - gap));
+  chartTooltip.style.left = `${left}px`;
+  chartTooltip.style.top = `${top}px`;
+}
+
+function hideChartTooltip() {
+  chartTooltip.hidden = true;
 }
 
 function getAllYears() {
