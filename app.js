@@ -62,6 +62,7 @@ const state = {
   visibleSeries: [],
   hiddenSeries: [],
   comparisons: [],
+  resultsView: "chart",
   nextComparisonId: 1,
   availableOutcomeKeys: OUTCOME_OPTIONS.map((option) => option.key),
 };
@@ -69,10 +70,12 @@ const state = {
 const comparisonList = document.querySelector("#comparison-list");
 const addComparisonButton = document.querySelector("#add-comparison-button");
 const selectionSummary = document.querySelector("#selection-summary");
-const yearCount = document.querySelector("#year-count");
 const resultsHead = document.querySelector("#results-head");
 const resultsBody = document.querySelector("#results-body");
 const chart = document.querySelector("#chart");
+const chartDetails = document.querySelector("#chart-details");
+const tablePanel = document.querySelector("#table-panel");
+const resultsToggleButton = document.querySelector("#results-toggle-button");
 const downloadButton = document.querySelector("#download-button");
 const outcomeNote = document.querySelector("#outcome-note");
 
@@ -97,6 +100,7 @@ async function init() {
 
   addComparisonButton.addEventListener("click", addComparison);
   downloadButton.addEventListener("click", downloadSeries);
+  resultsToggleButton.addEventListener("click", toggleResultsView);
 
   updateView();
 }
@@ -317,6 +321,7 @@ function updateView() {
   renderSummary();
   renderTable();
   renderChart();
+  renderResultsView();
 }
 
 function buildSeries(comparisons) {
@@ -456,22 +461,15 @@ function renderSummary() {
     selectionSummary.textContent = `All selected comparisons are hidden because total population falls below ${formatPopulation(
       SUPPRESSION_THRESHOLD,
     )} in at least one year in the data.`;
-    yearCount.textContent = "0";
     return;
   }
 
   if (state.visibleSeries.length === 0) {
     selectionSummary.textContent = "No rows match the current comparison selections.";
-    yearCount.textContent = "0";
     return;
   }
 
   const comparisonText = state.visibleSeries.map((series) => series.label).join(" | ");
-  const years = new Set(
-    state.visibleSeries.flatMap((series) =>
-      [...series.actual.points, ...series.projected.points].map((point) => point.year),
-    ),
-  );
   const hiddenMessage =
     state.hiddenSeries.length > 0
       ? ` ${state.hiddenSeries.length} comparison${state.hiddenSeries.length === 1 ? "" : "s"} hidden because total population falls below ${formatPopulation(
@@ -479,7 +477,20 @@ function renderSummary() {
         )} in at least one year in the data.`
       : "";
   selectionSummary.textContent = `${comparisonText}. Each comparison is split into actual data (${String.raw`pred=FALSE`}, solid) and projections (${String.raw`pred=TRUE`}, dashed). All values are collapsed by year using total population as weights.${hiddenMessage}`;
-  yearCount.textContent = String(years.size);
+}
+
+function toggleResultsView() {
+  state.resultsView = state.resultsView === "chart" ? "table" : "chart";
+  renderResultsView();
+}
+
+function renderResultsView() {
+  const showTable = state.resultsView === "table";
+  chart.hidden = showTable;
+  chartDetails.hidden = showTable;
+  tablePanel.hidden = !showTable;
+  resultsToggleButton.textContent = showTable ? "Show figure" : "Show data";
+  resultsToggleButton.setAttribute("aria-pressed", String(showTable));
 }
 
 function renderTable() {
@@ -634,7 +645,7 @@ function renderChart() {
         )
         .join("")}
       <text class="axis-label" x="${width / 2}" y="${height - 6}" text-anchor="middle">Year</text>
-      <text class="axis-label" x="16" y="${height / 2}" text-anchor="middle" transform="rotate(-90 16 ${height / 2})">Weighted Mean</text>
+      <text class="axis-label" x="16" y="${height / 2}" text-anchor="middle" transform="rotate(-90 16 ${height / 2})">Percent</text>
     </svg>
     <div class="legend">
       ${state.visibleSeries
@@ -857,7 +868,11 @@ function downloadSeries() {
 }
 
 function formatRate(value) {
-  return Number(value).toFixed(3);
+  return Number(value).toLocaleString(undefined, {
+    style: "percent",
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  });
 }
 
 function formatPopulation(value) {

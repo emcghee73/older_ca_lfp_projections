@@ -3,16 +3,15 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Projection Trend Explorer</title>
+    <title>Older Workers in California: Projections to 2040</title>
     <link rel="stylesheet" href="./styles.css">
   </head>
   <body>
     <main class="layout">
       <section class="hero">
-        <p class="eyebrow">Senior LFP Projections</p>
-        <h1>Projection Trend Explorer</h1>
+        <h1>Older Workers in California: Projections to 2040</h1>
         <p class="intro">
-          View weighted yearly trends for projection outcomes, subset by any combination of demographic and education variables, and download the resulting series.
+          The projections below were developed for the PPIC report "Older Workers in California: Projections to 2040." The interactive was created with Codex. Please contact Eric McGhee <a href="mailto:mcghee@ppic.org">mcghee@ppic.org</a> with questions or comments.
         </p>
       </section>
 
@@ -29,36 +28,26 @@
         </div>
 
         <div id="comparison-list" class="comparison-list"></div>
-        <p id="outcome-note" class="outcome-note" hidden>* Based on PPIC's version of the supplemental poverty measure. Takes into account taxes, safety net programs, and local cost of living. "Near poverty" is 150% of poverty. Available in historical data for 2011-2019 and 2021-2024. The values for 2019 and 2021 are connected through a linear interpolation.</p>
+        <p id="outcome-note" class="outcome-note" hidden>* From the <a href="https://www.ppic.org/publication/poverty-in-california/" target="_blank" rel="noopener noreferrer">California Poverty Measure</a>.</p>
       </section>
 
       <section class="results-grid">
         <article class="panel chart-panel">
-          <div class="panel-heading">
-            <div>
-              <h2>Trend</h2>
-              <p id="selection-summary">Loading data...</p>
-            </div>
-            <div class="metric">
-              <span class="metric-label">Years</span>
-              <strong id="year-count">0</strong>
-            </div>
-          </div>
           <div id="chart" class="chart" aria-live="polite"></div>
-        </article>
-
-        <article class="panel table-panel">
-          <div class="panel-heading">
-            <div>
-              <h2>Weighted Means</h2>
-              <p>Collapsed by year using <code>total population</code> as weights. Comparisons are hidden when total population falls below 20,000 in any year.</p>
-            </div>
+          <div id="chart-details" class="chart-details">
+            <p id="selection-summary">Loading data...</p>
+            <p>Collapsed by year using <code>total population</code> as weights. Comparisons are hidden when total population falls below 20,000 in any year.</p>
           </div>
-          <div class="table-wrap">
-            <table>
-              <thead id="results-head"></thead>
-              <tbody id="results-body"></tbody>
-            </table>
+          <div class="results-toggle">
+            <button id="results-toggle-button" class="button secondary" type="button" aria-controls="table-panel" aria-pressed="false">Show data</button>
+          </div>
+          <div id="table-panel" class="table-panel" hidden>
+            <div class="table-wrap">
+              <table>
+                <thead id="results-head"></thead>
+                <tbody id="results-body"></tbody>
+              </table>
+            </div>
           </div>
         </article>
       </section>
