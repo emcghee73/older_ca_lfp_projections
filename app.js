@@ -4,7 +4,7 @@ const POVERTY_OUTCOME_KEYS = new Set(["cpmU100", "cpmU150"]);
 const INTERPOLATED_POVERTY_YEAR = 2020;
 
 const OUTCOME_OPTIONS = [
-  { key: "lfp", optionLabel: "Labor force participation rate", totalColumn: "lfp", laborColumn: null, fixedDenominator: "all" },
+  { key: "lfp", optionLabel: "Labor force participation", totalColumn: "lfp", laborColumn: null, fixedDenominator: "all" },
   { key: "full_time", optionLabel: "Full time workers", totalColumn: "full_time", laborColumn: "full_time_lf", fixedDenominator: null },
   { key: "fb", optionLabel: "Foreign-born", totalColumn: "fb", laborColumn: "fb_lf", fixedDenominator: null },
   { key: "live_any_fam", optionLabel: "Lives with any family member", totalColumn: "live_any_fam", laborColumn: "live_fam_lf" },
@@ -509,8 +509,7 @@ function toggleResultsView() {
 function handleValueFormatChange(event) {
   state.valueFormat = event.currentTarget.value;
   renderComparisonControls();
-  renderTable();
-  renderChart();
+  updateView();
 }
 
 function renderResultsView() {
@@ -524,7 +523,7 @@ function renderResultsView() {
 
 function renderTable() {
   const years = getAllYears();
-  const valueType = state.valueFormat === "raw" ? "Total population" : "Percent";
+  const valueType = state.valueFormat === "raw" ? "Raw count" : "Percent";
   resultsHead.innerHTML = `
     <tr>
       <th>Year</th>
@@ -573,11 +572,11 @@ function renderTableCell(point) {
   if (point.suppressed) {
     return `<td>Suppressed<br><span class="cell-meta">Total population: ${formatPopulation(point.totalPopulation)}</span></td>`;
   }
-  if (state.valueFormat === "raw") {
-    return `<td>${formatPopulation(point.totalPopulation)}</td>`;
-  }
   if (point.value === null) {
     return `<td>No data<br><span class="cell-meta">Total population: ${formatPopulation(point.totalPopulation)}</span></td>`;
+  }
+  if (state.valueFormat === "raw") {
+    return `<td>${formatDisplayValue(getDisplayValue(point))}</td>`;
   }
   const interpolationText = point.interpolated ? "<br><span class=\"cell-meta\">Interpolated</span>" : "";
   return `<td>${formatDisplayValue(point.value)}<br><span class="cell-meta">Total population: ${formatPopulation(point.totalPopulation)}</span>${interpolationText}</td>`;
@@ -679,7 +678,6 @@ function renderChart() {
         )
         .join("")}
       <text class="axis-label" x="${width / 2}" y="${height - 6}" text-anchor="middle">Year</text>
-      <text class="axis-label" x="16" y="${height / 2}" text-anchor="middle" transform="rotate(-90 16 ${height / 2})">${getValueAxisLabel()}</text>
     </svg>
     <div class="legend">
       ${state.visibleSeries
@@ -730,11 +728,11 @@ function getSeriesDash(series, startPoint, endPoint) {
 }
 
 function isRenderablePoint(point) {
-  return point.totalPopulation > 0 && !point.suppressed && (state.valueFormat === "raw" || point.value !== null);
+  return point.totalPopulation > 0 && !point.suppressed && point.value !== null;
 }
 
 function getDisplayValue(point) {
-  return state.valueFormat === "raw" ? point.totalPopulation : point.value;
+  return state.valueFormat === "raw" ? point.value * point.totalPopulation : point.value;
 }
 
 function renderSeriesPoints(series, color, xPosition, yPosition) {
@@ -783,11 +781,18 @@ function buildTicks(min, max, count) {
     return [min];
   }
 
+  const rawStep = (max - min) / (count - 1);
+  const magnitude = 10 ** Math.floor(Math.log10(rawStep));
+  const normalizedStep = rawStep / magnitude;
+  const niceFactor = [1, 2, 2.5, 5, 10].find((factor) => normalizedStep <= factor) || 10;
+  const step = niceFactor * magnitude;
+  const firstTick = Math.ceil(min / step) * step;
+  const lastTick = Math.floor(max / step) * step;
   const ticks = [];
-  for (let index = 0; index < count; index += 1) {
-    ticks.push(min + ((max - min) * index) / (count - 1));
+  for (let tick = firstTick; tick <= lastTick + step * 0.000001; tick += step) {
+    ticks.push(Number(tick.toPrecision(12)));
   }
-  return ticks;
+  return ticks.length > 0 ? ticks : [min, max];
 }
 
 function parseCsvRecords(text) {
@@ -917,10 +922,6 @@ function formatDisplayValue(value) {
   });
 }
 
-function getValueAxisLabel() {
-  return state.valueFormat === "raw" ? "Count" : "Percent";
-}
-
 function formatPopulation(value) {
   return Number(value).toLocaleString(undefined, {
     maximumFractionDigits: 0,
@@ -983,6 +984,10 @@ function getResolvedOutcome(comparison) {
 }
 
 function getResolvedOutcomeLabel(definition, useLaborForce) {
+  if (state.valueFormat === "raw") {
+    return `${definition.optionLabel}: raw count`;
+  }
+
   if (definition.fixedDenominator) {
     return definition.optionLabel;
   }
