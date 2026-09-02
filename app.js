@@ -612,10 +612,7 @@ function renderChart() {
   const maxYear = years[years.length - 1];
   const minValue = Math.min(...visibleValues);
   const maxValue = Math.max(...visibleValues);
-  const padding = state.valueFormat === "raw" ? Math.max(maxValue * 0.03, 1) : 0.03;
-  const paddedMin = Math.max(0, minValue - padding);
-  const paddedMax = state.valueFormat === "raw" ? maxValue + padding : Math.min(1, maxValue + padding);
-  const yTicks = buildTicks(paddedMin, paddedMax, 5);
+  const yAxis = buildYAxisScale(minValue, maxValue, 4);
 
   const xPosition = (year) => {
     if (maxYear === minYear) {
@@ -625,10 +622,10 @@ function renderChart() {
   };
 
   const yPosition = (value) => {
-    if (paddedMax === paddedMin) {
+    if (yAxis.max === yAxis.min) {
       return margin.top + plotHeight / 2;
     }
-    return margin.top + plotHeight - ((value - paddedMin) / (paddedMax - paddedMin)) * plotHeight;
+    return margin.top + plotHeight - ((value - yAxis.min) / (yAxis.max - yAxis.min)) * plotHeight;
   };
 
   const yearTicks = years.filter((_, index) => {
@@ -640,7 +637,7 @@ function renderChart() {
 
   chart.innerHTML = `
     <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Outcome comparison chart">
-      ${yTicks
+      ${yAxis.ticks
         .map(
           (tick) => `
             <line class="grid-line" x1="${margin.left}" x2="${width - margin.right}" y1="${yPosition(
@@ -776,23 +773,33 @@ function buildComparisonLabel(comparison) {
   return parts.join(" | ");
 }
 
-function buildTicks(min, max, count) {
-  if (count <= 1 || min === max) {
-    return [min];
+function buildYAxisScale(minValue, maxValue, tickCount) {
+  const valueRange = maxValue - minValue;
+  const padding = valueRange > 0 ? valueRange * 0.06 : Math.max(Math.abs(maxValue) * 0.06, 1);
+  const targetMin = Math.max(0, minValue - padding);
+  const targetMax = maxValue + padding;
+  let step = getNiceStep((targetMax - targetMin) / (tickCount - 1));
+  let axisMin = Math.max(0, Math.floor(targetMin / step) * step);
+  let axisMax = axisMin + step * (tickCount - 1);
+
+  while (axisMax < targetMax) {
+    step = getNiceStep(step * 1.001);
+    axisMin = Math.max(0, Math.floor(targetMin / step) * step);
+    axisMax = axisMin + step * (tickCount - 1);
   }
 
-  const rawStep = (max - min) / (count - 1);
-  const magnitude = 10 ** Math.floor(Math.log10(rawStep));
-  const normalizedStep = rawStep / magnitude;
-  const niceFactor = [1, 2, 2.5, 5, 10].find((factor) => normalizedStep <= factor) || 10;
-  const step = niceFactor * magnitude;
-  const firstTick = Math.ceil(min / step) * step;
-  const lastTick = Math.floor(max / step) * step;
-  const ticks = [];
-  for (let tick = firstTick; tick <= lastTick + step * 0.000001; tick += step) {
-    ticks.push(Number(tick.toPrecision(12)));
-  }
-  return ticks.length > 0 ? ticks : [min, max];
+  return {
+    min: axisMin,
+    max: axisMax,
+    ticks: Array.from({ length: tickCount }, (_, index) => Number((axisMin + step * index).toPrecision(12))),
+  };
+}
+
+function getNiceStep(minimumStep) {
+  const magnitude = 10 ** Math.floor(Math.log10(minimumStep));
+  const normalizedStep = minimumStep / magnitude;
+  const factor = [1, 2, 2.5, 5, 10].find((candidate) => normalizedStep <= candidate) || 10;
+  return factor * magnitude;
 }
 
 function parseCsvRecords(text) {
