@@ -63,6 +63,7 @@ const state = {
   hiddenSeries: [],
   comparisons: [],
   resultsView: "chart",
+  valueFormat: "percent",
   nextComparisonId: 1,
   availableOutcomeKeys: OUTCOME_OPTIONS.map((option) => option.key),
 };
@@ -78,6 +79,7 @@ const tablePanel = document.querySelector("#table-panel");
 const resultsToggleButton = document.querySelector("#results-toggle-button");
 const downloadButton = document.querySelector("#download-button");
 const outcomeNote = document.querySelector("#outcome-note");
+const valueFormatInputs = document.querySelectorAll('input[name="value-format"]');
 
 init().catch((error) => {
   console.error(error);
@@ -101,6 +103,7 @@ async function init() {
   addComparisonButton.addEventListener("click", addComparison);
   downloadButton.addEventListener("click", downloadSeries);
   resultsToggleButton.addEventListener("click", toggleResultsView);
+  valueFormatInputs.forEach((input) => input.addEventListener("change", handleValueFormatChange));
 
   updateView();
 }
@@ -484,6 +487,12 @@ function toggleResultsView() {
   renderResultsView();
 }
 
+function handleValueFormatChange(event) {
+  state.valueFormat = event.currentTarget.value;
+  renderTable();
+  renderChart();
+}
+
 function renderResultsView() {
   const showTable = state.resultsView === "table";
   chart.hidden = showTable;
@@ -645,7 +654,7 @@ function renderChart() {
         )
         .join("")}
       <text class="axis-label" x="${width / 2}" y="${height - 6}" text-anchor="middle">Year</text>
-      <text class="axis-label" x="16" y="${height / 2}" text-anchor="middle" transform="rotate(-90 16 ${height / 2})">Percent</text>
+      <text class="axis-label" x="16" y="${height / 2}" text-anchor="middle" transform="rotate(-90 16 ${height / 2})">${getValueAxisLabel()}</text>
     </svg>
     <div class="legend">
       ${state.visibleSeries
@@ -868,11 +877,19 @@ function downloadSeries() {
 }
 
 function formatRate(value) {
+  if (state.valueFormat === "raw") {
+    return Number(value).toFixed(3);
+  }
+
   return Number(value).toLocaleString(undefined, {
     style: "percent",
     minimumFractionDigits: 1,
     maximumFractionDigits: 1,
   });
+}
+
+function getValueAxisLabel() {
+  return state.valueFormat === "raw" ? "Count" : "Percent";
 }
 
 function formatPopulation(value) {

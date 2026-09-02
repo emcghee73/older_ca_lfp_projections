@@ -8,6 +8,8 @@
   --accent-soft: #d8ece8;
   --line: #d27c2c;
   --shadow: 0 18px 40px rgba(52, 35, 12, 0.08);
+  --font-text: "Proxima Nova", "Proxima Nova Regular", Arial, sans-serif;
+  --font-title: "Utopia Standard", "Utopia Std", Georgia, serif;
 }
 
 * {
@@ -20,7 +22,7 @@
 
 body {
   margin: 0;
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: var(--font-text);
   color: var(--text);
   background:
     radial-gradient(circle at top left, rgba(210, 124, 44, 0.16), transparent 28%),
@@ -53,6 +55,7 @@ p {
 }
 
 h1 {
+  font-family: var(--font-title);
   margin-bottom: 10px;
   font-size: clamp(2.2rem, 5vw, 4.2rem);
   line-height: 0.95;
@@ -126,7 +129,7 @@ h1 {
   border-radius: 16px;
   border: 1px solid rgba(29, 26, 22, 0.16);
   background: #fffdf8;
-  font-family: Arial, sans-serif;
+  font-family: var(--font-text);
   font-size: 0.92rem;
   line-height: 1.35;
 }
@@ -188,6 +191,33 @@ select:focus,
   display: grid;
   gap: 16px;
   margin-top: 20px;
+}
+
+.value-format-control {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+  align-items: center;
+  margin: 20px 0 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(29, 26, 22, 0.12);
+  border-radius: 14px;
+}
+
+.value-format-control legend {
+  padding: 0 6px;
+  font-weight: 700;
+}
+
+.value-format-control label {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.value-format-control input {
+  margin: 0;
+  accent-color: var(--accent);
 }
 
 .outcome-note {
@@ -331,7 +361,7 @@ select:focus,
   flex-wrap: wrap;
   gap: 12px 16px;
   margin-top: 12px;
-  font-family: Arial, sans-serif;
+  font-family: var(--font-text);
   color: var(--muted);
   font-size: 0.9rem;
 }
@@ -377,13 +407,13 @@ select:focus,
 .tick-label {
   fill: var(--muted);
   font-size: 12px;
-  font-family: Arial, sans-serif;
+  font-family: var(--font-text);
 }
 
 .tooltip-text {
   font-size: 12px;
   fill: var(--text);
-  font-family: Arial, sans-serif;
+  font-family: var(--font-text);
 }
 
 .table-wrap {
@@ -394,7 +424,7 @@ select:focus,
 table {
   width: 100%;
   border-collapse: collapse;
-  font-family: Arial, sans-serif;
+  font-family: var(--font-text);
 }
 
 th,
