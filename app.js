@@ -79,7 +79,6 @@ const tablePanel = document.querySelector("#table-panel");
 const resultsToggleButton = document.querySelector("#results-toggle-button");
 const downloadButton = document.querySelector("#download-button");
 const outcomeNote = document.querySelector("#outcome-note");
-const valueFormatInputs = document.querySelectorAll('input[name="value-format"]');
 
 init().catch((error) => {
   console.error(error);
@@ -103,7 +102,6 @@ async function init() {
   addComparisonButton.addEventListener("click", addComparison);
   downloadButton.addEventListener("click", downloadSeries);
   resultsToggleButton.addEventListener("click", toggleResultsView);
-  valueFormatInputs.forEach((input) => input.addEventListener("change", handleValueFormatChange));
 
   updateView();
 }
@@ -157,6 +155,7 @@ function renderComparisonControls() {
               renderSelectControl(comparison.id, filter.key, filter.label, filter.values, comparison[filter.key], true),
             ).join("")}
           </div>
+          ${index === 0 ? renderValueFormatControls() : ""}
           ${renderDenominatorControls(comparison)}
         </section>
       `,
@@ -165,6 +164,10 @@ function renderComparisonControls() {
 
   comparisonList.querySelectorAll("[data-field]").forEach((input) => {
     input.addEventListener("change", handleComparisonChange);
+  });
+
+  comparisonList.querySelectorAll('input[name="value-format"]').forEach((input) => {
+    input.addEventListener("change", handleValueFormatChange);
   });
 
   comparisonList.querySelectorAll(".remove-comparison-button").forEach((button) => {
@@ -185,7 +188,7 @@ function renderOutcomeNote() {
 }
 
 function renderDenominatorControls(comparison) {
-  if (!comparisonSupportsDenominator(comparison)) {
+  if (state.valueFormat !== "percent" || !comparisonSupportsDenominator(comparison)) {
     return "";
   }
 
@@ -221,6 +224,22 @@ function renderDenominatorControls(comparison) {
         </label>
       </div>
     </div>
+  `;
+}
+
+function renderValueFormatControls() {
+  return `
+    <fieldset class="value-format-control">
+      <legend>Display values as</legend>
+      <label>
+        <input type="radio" name="value-format" value="percent" ${state.valueFormat === "percent" ? "checked" : ""}>
+        Percentages
+      </label>
+      <label>
+        <input type="radio" name="value-format" value="raw" ${state.valueFormat === "raw" ? "checked" : ""}>
+        Raw numbers
+      </label>
+    </fieldset>
   `;
 }
 
@@ -489,6 +508,7 @@ function toggleResultsView() {
 
 function handleValueFormatChange(event) {
   state.valueFormat = event.currentTarget.value;
+  renderComparisonControls();
   renderTable();
   renderChart();
 }
