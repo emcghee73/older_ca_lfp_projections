@@ -479,7 +479,7 @@ function renderSummary() {
           SUPPRESSION_THRESHOLD,
         )} in at least one year in the data.`
       : "";
-  selectionSummary.textContent = `${comparisonText}. Each comparison is split into actual data (${String.raw`pred=FALSE`}, solid) and projections (${String.raw`pred=TRUE`}, dashed). All values are collapsed by year using total population as weights.${hiddenMessage}`;
+  selectionSummary.textContent = `${comparisonText}. Each comparison is split into actual data (${String.raw`pred=FALSE`}, solid) and projections (${String.raw`pred=TRUE`}, dashed).${hiddenMessage}`;
 }
 
 function toggleResultsView() {
@@ -504,14 +504,15 @@ function renderResultsView() {
 
 function renderTable() {
   const years = getAllYears();
+  const valueType = state.valueFormat === "raw" ? "Total population" : "Percent";
   resultsHead.innerHTML = `
     <tr>
       <th>Year</th>
       ${state.visibleSeries
         .map(
           (series) => `
-            <th>${escapeHtml(series.label)}<br><span class="cell-meta">Actual</span></th>
-            <th>${escapeHtml(series.label)}<br><span class="cell-meta">Projected</span></th>
+            <th>${escapeHtml(series.label)}<br><span class="cell-meta">${valueType} | Actual</span></th>
+            <th>${escapeHtml(series.label)}<br><span class="cell-meta">${valueType} | Projected</span></th>
           `,
         )
         .join("")}
@@ -552,17 +553,20 @@ function renderTableCell(point) {
   if (point.suppressed) {
     return `<td>Suppressed<br><span class="cell-meta">Total population: ${formatPopulation(point.totalPopulation)}</span></td>`;
   }
+  if (state.valueFormat === "raw") {
+    return `<td>${formatPopulation(point.totalPopulation)}</td>`;
+  }
   if (point.value === null) {
     return `<td>No data<br><span class="cell-meta">Total population: ${formatPopulation(point.totalPopulation)}</span></td>`;
   }
   const interpolationText = point.interpolated ? "<br><span class=\"cell-meta\">Interpolated</span>" : "";
-  return `<td>${formatRate(point.value)}<br><span class="cell-meta">Total population: ${formatPopulation(point.totalPopulation)}</span>${interpolationText}</td>`;
+  return `<td>${formatDisplayValue(point.value)}<br><span class="cell-meta">Total population: ${formatPopulation(point.totalPopulation)}</span>${interpolationText}</td>`;
 }
 
 function renderChart() {
   const visibleValues = state.visibleSeries.flatMap((series) =>
     [series.actual, series.projected].flatMap((predSeries) =>
-      predSeries.points.flatMap((point) => (point.suppressed || point.value === null ? [] : [point.value])),
+      predSeries.points.flatMap((point) => (isRenderablePoint(point) ? [getDisplayValue(point)] : [])),
     ),
   );
 
@@ -589,8 +593,9 @@ function renderChart() {
   const maxYear = years[years.length - 1];
   const minValue = Math.min(...visibleValues);
   const maxValue = Math.max(...visibleValues);
-  const paddedMin = Math.max(0, minValue - 0.03);
-  const paddedMax = Math.min(1, maxValue + 0.03);
+  const padding = state.valueFormat === "raw" ? Math.max(maxValue * 0.03, 1) : 0.03;
+  const paddedMin = Math.max(0, minValue - padding);
+  const paddedMax = state.valueFormat === "raw" ? maxValue + padding : Math.min(1, maxValue + padding);
   const yTicks = buildTicks(paddedMin, paddedMax, 5);
 
   const xPosition = (year) => {
@@ -622,7 +627,7 @@ function renderChart() {
             <line class="grid-line" x1="${margin.left}" x2="${width - margin.right}" y1="${yPosition(
               tick,
             )}" y2="${yPosition(tick)}"></line>
-            <text class="tick-label" x="${margin.left - 10}" y="${yPosition(tick) + 4}" text-anchor="end">${formatRate(
+            <text class="tick-label" x="${margin.left - 10}" y="${yPosition(tick) + 4}" text-anchor="end">${formatDisplayValue(
               tick,
             )}</text>
           `,
@@ -670,7 +675,7 @@ function renderChart() {
         )
         .join("")}
       ${
-        state.visibleSeries.some((series) => series.actual.points.some((point) => point.interpolated))
+        state.valueFormat === "percent" && state.visibleSeries.some((series) => series.actual.points.some((point) => point.interpolated))
           ? '<span class="legend-item"><span class="legend-style dotted-style">Interpolated 2020</span></span>'
           : ""
       }
@@ -687,9 +692,9 @@ function renderSeriesSegments(series, color, xPosition, yPosition) {
         return "";
       }
       const dash = getSeriesDash(series, previousPoint, point);
-      return `<path class="series-line" d="M ${xPosition(previousPoint.year)} ${yPosition(previousPoint.value)} L ${xPosition(
+      return `<path class="series-line" d="M ${xPosition(previousPoint.year)} ${yPosition(getDisplayValue(previousPoint))} L ${xPosition(
         point.year,
-      )} ${yPosition(point.value)}" stroke="${color}"${dash}></path>`;
+      )} ${yPosition(getDisplayValue(point))}" stroke="${color}"${dash}></path>`;
     })
     .join("");
 }
@@ -698,31 +703,35 @@ function getSeriesDash(series, startPoint, endPoint) {
   if (series.lineStyle === "dashed") {
     return ' stroke-dasharray="8 6"';
   }
-  if (startPoint.interpolated || endPoint.interpolated) {
+  if (state.valueFormat === "percent" && (startPoint.interpolated || endPoint.interpolated)) {
     return ' stroke-dasharray="1 6"';
   }
   return "";
 }
 
 function isRenderablePoint(point) {
-  return point.totalPopulation > 0 && !point.suppressed && point.value !== null;
+  return point.totalPopulation > 0 && !point.suppressed && (state.valueFormat === "raw" || point.value !== null);
+}
+
+function getDisplayValue(point) {
+  return state.valueFormat === "raw" ? point.totalPopulation : point.value;
 }
 
 function renderSeriesPoints(series, color, xPosition, yPosition) {
   return series.points
     .map((point) => {
-      if (point.totalPopulation === 0 || point.suppressed || point.value === null) {
+      if (!isRenderablePoint(point)) {
         return "";
       }
-      if (point.interpolated) {
+      if (point.interpolated && state.valueFormat === "percent") {
         return "";
       }
       return `
         <g>
-          <circle class="series-point" cx="${xPosition(point.year)}" cy="${yPosition(point.value)}" r="4" stroke="${color}"></circle>
-          <title>${escapeHtml(series.label)} | ${point.year}: ${formatRate(point.value)} | Total population: ${formatPopulation(
-            point.totalPopulation,
-          )}${point.interpolated ? " | Interpolated" : ""}</title>
+          <circle class="series-point" cx="${xPosition(point.year)}" cy="${yPosition(getDisplayValue(point))}" r="4" stroke="${color}"></circle>
+          <title>${escapeHtml(series.label)} | ${point.year}: ${formatDisplayValue(getDisplayValue(point))}${
+            state.valueFormat === "percent" ? ` | Total population: ${formatPopulation(point.totalPopulation)}` : ""
+          }${point.interpolated && state.valueFormat === "percent" ? " | Interpolated" : ""}</title>
         </g>
       `;
     })
@@ -876,9 +885,9 @@ function downloadSeries() {
   URL.revokeObjectURL(url);
 }
 
-function formatRate(value) {
+function formatDisplayValue(value) {
   if (state.valueFormat === "raw") {
-    return Number(value).toFixed(3);
+    return formatPopulation(value);
   }
 
   return Number(value).toLocaleString(undefined, {
