@@ -378,6 +378,12 @@ select:focus,
   stroke: transparent;
 }
 
+.chart-hover-marker {
+  fill: rgba(255, 253, 248, 0.45);
+  stroke-width: 3;
+  pointer-events: none;
+}
+
 .chart-tooltip {
   position: absolute;
   z-index: 2;

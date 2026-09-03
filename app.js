@@ -104,8 +104,7 @@ async function init() {
   addComparisonButton.addEventListener("click", addComparison);
   downloadButton.addEventListener("click", downloadSeries);
   resultsToggleButton.addEventListener("click", toggleResultsView);
-  chart.addEventListener("pointerover", showChartTooltip);
-  chart.addEventListener("pointermove", moveChartTooltip);
+  chart.addEventListener("pointermove", updateChartHover);
   chart.addEventListener("pointerleave", hideChartTooltip);
 
   updateView();
@@ -676,6 +675,7 @@ function renderChart() {
         .filter((series) => !series.hidden)
         .map((series) => renderSeriesPoints(series.projected, series.color, xPosition, yPosition))
         .join("")}
+      <circle class="chart-hover-marker" r="9" hidden></circle>
       ${yearTicks
         .map(
           (year) => `
@@ -769,21 +769,51 @@ function buildPointTooltipText(series, point) {
   )}${interpolationLabel}`;
 }
 
-function showChartTooltip(event) {
-  const pointGroup = event.target.closest(".series-point-group");
+function updateChartHover(event) {
+  const pointGroup = findNearestPointGroup(event);
   if (!pointGroup) {
+    hideChartTooltip();
     return;
   }
 
   chartTooltip.textContent = pointGroup.dataset.tooltip;
   chartTooltip.hidden = false;
+  highlightChartPoint(pointGroup);
   positionChartTooltip(event);
 }
 
-function moveChartTooltip(event) {
-  if (!chartTooltip.hidden) {
-    positionChartTooltip(event);
+function findNearestPointGroup(event) {
+  if (!(event.target instanceof Element) || !event.target.closest("svg")) {
+    return null;
   }
+
+  const maximumDistance = event.pointerType === "touch" ? 48 : 36;
+  let nearestPointGroup = null;
+  let nearestDistance = maximumDistance;
+
+  chart.querySelectorAll(".series-point-group").forEach((pointGroup) => {
+    const point = pointGroup.querySelector(".series-point");
+    const bounds = point.getBoundingClientRect();
+    const pointX = bounds.left + bounds.width / 2;
+    const pointY = bounds.top + bounds.height / 2;
+    const distance = Math.hypot(event.clientX - pointX, event.clientY - pointY);
+
+    if (distance <= nearestDistance) {
+      nearestDistance = distance;
+      nearestPointGroup = pointGroup;
+    }
+  });
+
+  return nearestPointGroup;
+}
+
+function highlightChartPoint(pointGroup) {
+  const point = pointGroup.querySelector(".series-point");
+  const hoverMarker = chart.querySelector(".chart-hover-marker");
+  hoverMarker.setAttribute("cx", point.getAttribute("cx"));
+  hoverMarker.setAttribute("cy", point.getAttribute("cy"));
+  hoverMarker.setAttribute("stroke", point.getAttribute("stroke"));
+  hoverMarker.hidden = false;
 }
 
 function positionChartTooltip(event) {
@@ -800,6 +830,10 @@ function positionChartTooltip(event) {
 
 function hideChartTooltip() {
   chartTooltip.hidden = true;
+  const hoverMarker = chart.querySelector(".chart-hover-marker");
+  if (hoverMarker) {
+    hoverMarker.hidden = true;
+  }
 }
 
 function getAllYears() {
