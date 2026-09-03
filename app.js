@@ -813,7 +813,7 @@ function highlightChartPoint(pointGroup) {
   hoverMarker.setAttribute("cx", point.getAttribute("cx"));
   hoverMarker.setAttribute("cy", point.getAttribute("cy"));
   hoverMarker.setAttribute("stroke", point.getAttribute("stroke"));
-  hoverMarker.hidden = false;
+  hoverMarker.removeAttribute("hidden");
 }
 
 function positionChartTooltip(event) {
@@ -832,7 +832,7 @@ function hideChartTooltip() {
   chartTooltip.hidden = true;
   const hoverMarker = chart.querySelector(".chart-hover-marker");
   if (hoverMarker) {
-    hoverMarker.hidden = true;
+    hoverMarker.setAttribute("hidden", "");
   }
 }
 
